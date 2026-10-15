@@ -77,7 +77,7 @@ public sealed class ProcessContractTests : IAsyncLifetime
 
         var tools = await session.ListToolsAsync(cancellationToken: cancellation.Token);
 
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
     }
 
     /// <summary>The guard rules of every Snail server, on the list a model receives.</summary>

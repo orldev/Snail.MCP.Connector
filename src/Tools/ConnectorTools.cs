@@ -60,18 +60,29 @@ public sealed class ConnectorTools(Queries queries)
         CancellationToken cancellationToken = default) =>
         ToolResponse.From(await queries.CountAsync(source, collection, filter, cancellationToken));
 
+    /// <summary>Runs a SELECT on a SQL source.</summary>
+    [McpServerTool(Name = "connector_query", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description(ToolDescriptions.Query)]
+    public async Task<CallToolResult> QueryAsync(
+        [Description(ToolDescriptions.SourceName)] string source,
+        [Description(ToolDescriptions.Select)] string select,
+        [Description(ToolDescriptions.Limit)] int? limit = null,
+        CancellationToken cancellationToken = default) =>
+        ToolResponse.From(await queries.QueryAsync(source, select, limit, cancellationToken));
+
     /// <summary>Writes rows into a table file of the task.</summary>
     [McpServerTool(Name = "connector_export", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(ToolDescriptions.Export)]
     public async Task<CallToolResult> ExportAsync(
         [Description(ToolDescriptions.SourceName)] string source,
-        [Description(ToolDescriptions.Collection)] string collection,
         [Description(ToolDescriptions.Format)] string format,
         [Description(ToolDescriptions.File)] string file,
+        [Description(ToolDescriptions.ExportCollection)] string? collection = null,
         [Description(ToolDescriptions.Filter)] string? filter = null,
         [Description(ToolDescriptions.ExportPipeline)] string? pipeline = null,
+        [Description(ToolDescriptions.ExportSelect)] string? select = null,
         CancellationToken cancellationToken = default) =>
-        ToolResponse.From(await queries.ExportAsync(source, collection, filter, pipeline, format, file, cancellationToken));
+        ToolResponse.From(await queries.ExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken));
 
     /// <summary>Reads the queries this task made.</summary>
     [McpServerTool(Name = "connector_journal", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

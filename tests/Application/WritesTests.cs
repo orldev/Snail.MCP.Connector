@@ -67,6 +67,14 @@ public sealed class WritesTests
     }
 
     [Fact]
+    public async Task ProposeAsync_SqlSource_IsRefusedForNow()
+    {
+        var proposed = await _fakes.Writes().ProposeAsync("ledger", "accounts", "update", """{"id": 1}""", """{"$set": {"x": 1}}""", "fix", CancellationToken.None);
+
+        Assert.Equal(Messages.NoSqlWrites, proposed.Error);
+    }
+
+    [Fact]
     public async Task ProposeAsync_ServerWithoutAnApprovalKey_KeepsWritesOff()
     {
         _fakes.Settings.ApprovalKey = string.Empty;

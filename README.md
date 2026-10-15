@@ -16,7 +16,30 @@ The server reads the company's databases for the platform's agents, inside the c
 through a database user that can only read; every query — task, source, collection, what was asked, how many rows — is
 written into a journal of one JSON-lines file a day in the server's data folder, and an answer whose query could not be
 written down is withheld. Pipelines that write or run code (`$out`, `$merge`, `$function`, `$accumulator`, `$where`) are
-refused, and a join may read only collections the source allows. MongoDB first; SQL Server and PostgreSQL follow.
+refused, and a join may read only collections the source allows.
+
+A SQL Server or PostgreSQL source is read with `connector_query` and one `SELECT` (or `WITH … SELECT`). The statement is
+read with its comments and strings taken out: a second statement, a word that writes or runs code (`INSERT`, `UPDATE`,
+`DELETE`, `INTO`, `EXEC`, `COPY`, `SET`…) or a table after `FROM`/`JOIN` the source does not allow is refused before the
+database sees it. It then runs in a transaction that is always rolled back — on PostgreSQL also `READ ONLY`, so the
+database refuses a write itself — with the query's seconds as its command timeout. On SQL Server the read-only user is
+the wall that counts: give it `db_datareader` and nothing else. `connector_schema` reads the columns from
+`information_schema`, three rows as examples, the planner's row estimate and the indexes; `connector_export` writes the
+rows of a `SELECT` as it does a collection's. Writes to SQL sources are not made yet: a proposal is refused.
+
+```sql
+-- PostgreSQL
+CREATE ROLE reader LOGIN PASSWORD '…';
+GRANT CONNECT ON DATABASE ledger TO reader;
+GRANT USAGE ON SCHEMA public TO reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO reader;
+ALTER ROLE reader SET default_transaction_read_only = on;
+
+-- SQL Server, in the database
+CREATE LOGIN reader WITH PASSWORD = '…';
+CREATE USER reader FOR LOGIN reader;
+ALTER ROLE db_datareader ADD MEMBER reader;
+```
 
 ## Writes
 
@@ -38,7 +61,7 @@ A source is one KV v2 secret in the stand's Vault, under `secret/connectors/<nam
 | `database` | the database read |
 | `collections` | the collections an agent may read, comma-separated; `*` for every one |
 | `description` | what a person wrote about the data, shown to the agent |
-| `readUri` | the connection string of the user that may only read |
+| `readUri` | the connection string of the user that may only read: a `mongodb://` URI, or for SQL the driver's own form (`Host=…;Username=…;Password=…` for PostgreSQL, `Server=…;User Id=…;Password=…;TrustServerCertificate=true` for SQL Server); the database is taken from `database` |
 | `writeUri` | the connection string of the user that may write — used only after a person approves a write |
 
 ## Settings

@@ -21,6 +21,7 @@ public static class QueryRegistrationExtensions
             services.AddSingleton<SessionGrant>();
             services.AddSingleton<ISources, VaultSources>();
             services.AddSingleton<IDocuments, MongoDocuments>();
+            services.AddSingleton<ITables, SqlTables>();
             services.AddSingleton<IQueryJournal>(provider => FileQueryJournal.InDataFolder(provider.GetRequiredService<IOptions<ConnectorOptions>>()));
             services.AddSingleton<ITableFiles, TableFiles>();
             services.AddSingleton<IProposals>(_ => FileProposals.InDataFolder());

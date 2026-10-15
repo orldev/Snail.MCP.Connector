@@ -85,11 +85,47 @@ public sealed class QueriesTests
     }
 
     [Fact]
-    public async Task CountAsync_SqlSource_SaysItIsNotReadYet()
+    public async Task CountAsync_SqlSource_SaysToUseASelect()
     {
         var counted = await _fakes.Queries().CountAsync("ledger", "accounts", null, CancellationToken.None);
 
         Assert.Equal(Messages.NotDocuments, counted.Error);
+    }
+
+    [Fact]
+    public async Task QueryAsync_SqlSource_RunsTheSelectAndJournalsIt()
+    {
+        var queried = await _fakes.Queries().QueryAsync("ledger", "SELECT count(*) FROM accounts", null, CancellationToken.None);
+
+        Assert.Single(queried.Value!.Rows);
+        Assert.Equal(["SELECT count(*) FROM accounts"], _fakes.Tables.Asked);
+        Assert.Equal("query", Assert.Single(_fakes.Written.Records).Operation);
+    }
+
+    [Fact]
+    public async Task QueryAsync_MongoSource_SaysToUseFindAndPipelines()
+    {
+        var queried = await _fakes.Queries().QueryAsync("sales", "SELECT 1", null, CancellationToken.None);
+
+        Assert.Equal(Messages.NotTables, queried.Error);
+    }
+
+    [Fact]
+    public async Task QueryAsync_StatementThatWrites_IsRefusedBeforeTheDatabase()
+    {
+        var queried = await _fakes.Queries().QueryAsync("ledger", "UPDATE accounts SET balance = 0", null, CancellationToken.None);
+
+        Assert.Equal(Messages.NotASelect, queried.Error);
+        Assert.Empty(_fakes.Tables.Asked);
+    }
+
+    [Fact]
+    public async Task ExportAsync_SqlSource_WritesTheRowsOfTheSelect()
+    {
+        var exported = await _fakes.Queries().ExportAsync("ledger", null, null, null, "SELECT * FROM accounts", "csv", "accounts", CancellationToken.None);
+
+        Assert.Equal("exports/accounts.csv", exported.Value!.Path);
+        Assert.Equal(["SELECT * FROM accounts"], _fakes.Tables.Asked);
     }
 
     [Fact]
@@ -106,7 +142,7 @@ public sealed class QueriesTests
     [InlineData(null, null)]
     public async Task ExportAsync_BothOrNeitherQuery_IsRefused(string? filter, string? pipeline)
     {
-        var exported = await _fakes.Queries().ExportAsync("sales", "orders", filter, pipeline, "csv", "paid", CancellationToken.None);
+        var exported = await _fakes.Queries().ExportAsync("sales", "orders", filter, pipeline, null, "csv", "paid", CancellationToken.None);
 
         Assert.Equal(Messages.OneQuery, exported.Error);
     }
@@ -117,7 +153,7 @@ public sealed class QueriesTests
     [InlineData("")]
     public async Task ExportAsync_FileNameWithAFolder_IsRefused(string file)
     {
-        var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, "csv", file, CancellationToken.None);
+        var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, null, "csv", file, CancellationToken.None);
 
         Assert.Equal(Messages.BadFileName, exported.Error);
     }
@@ -125,7 +161,7 @@ public sealed class QueriesTests
     [Fact]
     public async Task ExportAsync_Filter_WritesTheFileAndJournalsTheExport()
     {
-        var exported = await _fakes.Queries().ExportAsync("sales", "orders", """{"status": "paid"}""", null, "xlsx", "paid", CancellationToken.None);
+        var exported = await _fakes.Queries().ExportAsync("sales", "orders", """{"status": "paid"}""", null, null, "xlsx", "paid", CancellationToken.None);
 
         Assert.Equal("exports/paid.xlsx", exported.Value!.Path);
         Assert.Equal("export", Assert.Single(_fakes.Written.Records).Operation);
@@ -134,7 +170,7 @@ public sealed class QueriesTests
     [Fact]
     public async Task ExportAsync_FormatItDoesNotWrite_IsRefused()
     {
-        var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, "pdf", "paid", CancellationToken.None);
+        var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, null, "pdf", "paid", CancellationToken.None);
 
         Assert.Equal(Messages.BadFormat, exported.Error);
     }

@@ -22,7 +22,25 @@ public static class Messages
     public const string NoSourcesHint = "A person declares a company database on the stand; this server cannot add one itself.";
 
     /// <summary>The source is not a document database.</summary>
-    public const string NotDocuments = "This source is not a document database; SQL Server and PostgreSQL sources are not read yet.";
+    public const string NotDocuments = "This source is a SQL database: read it with connector_query and a SELECT; filters and pipelines are for MongoDB sources.";
+
+    /// <summary>A MongoDB source asked with SQL.</summary>
+    public const string NotTables = "This source is a MongoDB database: read it with connector_find, connector_aggregate and connector_count; connector_query is for SQL sources.";
+
+    /// <summary>Writes to a SQL source.</summary>
+    public const string NoSqlWrites = "Writes to SQL sources are not proposed by this server yet; say in your answer what you would change.";
+
+    /// <summary>A statement that is not a SELECT.</summary>
+    public const string NotASelect = "The statement is not a SELECT: this server runs one SELECT, or a WITH that ends in one.";
+
+    /// <summary>More than one statement.</summary>
+    public const string OneStatement = "The statement holds more than one: send one SELECT at a time.";
+
+    /// <summary>How a SQL query is written.</summary>
+    public const string SelectHint = "Write one SELECT, such as SELECT city, count(*) FROM customers GROUP BY city; read the tables and columns with connector_schema first.";
+
+    /// <summary>A word that writes or changes the database.</summary>
+    public static string SqlForbidden(string word) => $"{word} is not run by this server: it writes or changes the database. Only SELECT reads are run.";
 
     /// <summary>The pipeline is not an array of stages.</summary>
     public const string NotAPipeline = "The pipeline is not a JSON array of stage objects.";

@@ -1,11 +1,18 @@
 <Project Sdk="Snail.Sdk.Mcp">
 
   <!-- A test project of a server: Snail.Sdk.Mcp gives it Snail.Sdk.Mcp.Testing, the contract and the guard rules. -->
+  <PropertyGroup>
+    <!-- As the server: SQL Server's client opens no connection without culture data. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="ModelContextProtocol.Core" />
     <PackageReference Include="Testcontainers.MongoDb" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
   </ItemGroup>

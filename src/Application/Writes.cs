@@ -169,7 +169,7 @@ public sealed class Writes(
             return Answer.Failed<WriteContext>(found.Error!, found.Hint);
 
         if (source.Source.Kind is not SourceKind.MongoDb)
-            return Answer.Failed<WriteContext>(Messages.NotDocuments);
+            return Answer.Failed<WriteContext>(Messages.NoSqlWrites);
 
         if (!source.Source.Allows(collection))
             return Answer.Failed<WriteContext>(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source));

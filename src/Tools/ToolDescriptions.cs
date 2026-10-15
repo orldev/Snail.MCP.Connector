@@ -23,10 +23,24 @@ public static class ToolDescriptions
     /// <summary>The contract of connector_schema.</summary>
     public const string Schema =
         """
-        Read what a source holds before querying it. Without a collection: the collections an agent may read. With one:
-        its fields read from a sample of 200 documents — each field's dotted path, its types, how often it is present and
-        an example value — the documents it holds and its indexes, which are what a filter is quick on.
+        Read what a source holds before querying it. Without a collection: the collections or tables an agent may read.
+        With one: for MongoDB, its fields read from a sample of 200 documents — each field's dotted path, its types, how
+        often it is present and an example value; for SQL, its columns with their types and an example value. Both answer
+        how many rows it holds and its indexes, which are what a query is quick on.
         """;
+
+    /// <summary>The contract of connector_query.</summary>
+    public const string Query =
+        """
+        Run one SELECT on a SQL source — PostgreSQL or SQL Server — to search, join, group and sum. The statement is a
+        SELECT or a WITH ending in one; anything that writes or changes the database is refused, and it runs as the
+        read-only user in a transaction that is rolled back. Tables after FROM and JOIN must be ones the source allows.
+        The answer carries 50 rows unless asked for more, at most 200, at most 65536 bytes; a query gets 30 seconds.
+        For MongoDB sources use connector_find and connector_aggregate.
+        """;
+
+    /// <summary>The select parameter of connector_query.</summary>
+    public const string Select = "The SELECT, such as SELECT c.city, sum(o.total) FROM orders o JOIN customers c ON c.id = o.customer_id GROUP BY c.city.";
 
     /// <summary>The contract of connector_find.</summary>
     public const string Find =
@@ -56,10 +70,16 @@ public static class ToolDescriptions
     /// <summary>The contract of connector_export.</summary>
     public const string Export =
         $"""
-        Write the documents of a filter, or the rows of a pipeline, into a {Formats} file of the task, under exports/ of
-        the working copy, so a person gets the data as a table. Give either a filter or a pipeline. Nested fields become
-        columns of their dotted paths. An export writes at most 100000 rows and says when it stopped there.
+        Write rows into a {Formats} file of the task, under exports/ of the working copy, which the task's card offers a
+        person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
+        of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there.
         """;
+
+    /// <summary>The collection parameter of connector_export.</summary>
+    public const string ExportCollection = "For MongoDB, the collection, as connector_schema lists it; not used for SQL.";
+
+    /// <summary>The select parameter of connector_export.</summary>
+    public const string ExportSelect = "For SQL, the SELECT whose rows the file holds; not used for MongoDB.";
 
     /// <summary>The contract of connector_journal.</summary>
     public const string Journal =
@@ -133,7 +153,7 @@ public static class ToolDescriptions
     public const string Pipeline = """The stages as a JSON array, such as [{"$match": {"status": "paid"}}, {"$group": {"_id": "$customer", "total": {"$sum": "$total"}}}].""";
 
     /// <summary>The pipeline parameter of connector_export.</summary>
-    public const string ExportPipeline = "The stages as a JSON array, when the rows come from a pipeline rather than a filter.";
+    public const string ExportPipeline = "For MongoDB, the stages as a JSON array, when the rows come from a pipeline rather than a filter.";
 
     /// <summary>The format parameter.</summary>
     public const string Format = $"The file's format: {Formats}.";

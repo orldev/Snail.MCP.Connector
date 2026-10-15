@@ -22,9 +22,10 @@ Takes no parameters.
 
 ## <code>connector_<wbr>schema</code>
 
-Read what a source holds before querying it. Without a collection: the collections an agent may read. With one:
-its fields read from a sample of 200 documents — each field's dotted path, its types, how often it is present and
-an example value — the documents it holds and its indexes, which are what a filter is quick on.
+Read what a source holds before querying it. Without a collection: the collections or tables an agent may read.
+With one: for MongoDB, its fields read from a sample of 200 documents — each field's dotted path, its types, how
+often it is present and an example value; for SQL, its columns with their types and an example value. Both answer
+how many rows it holds and its indexes, which are what a query is quick on.
 
 *read-only · repeat-safe · stays on this machine.*
 
@@ -232,22 +233,21 @@ all. Cheaper than reading them: count before reading a large collection.
 
 </details>
 
-## <code>connector_<wbr>export</code>
+## <code>connector_<wbr>query</code>
 
-Write the documents of a filter, or the rows of a pipeline, into a csv or xlsx file of the task, under exports/ of
-the working copy, so a person gets the data as a table. Give either a filter or a pipeline. Nested fields become
-columns of their dotted paths. An export writes at most 100000 rows and says when it stopped there.
+Run one SELECT on a SQL source — PostgreSQL or SQL Server — to search, join, group and sum. The statement is a
+SELECT or a WITH ending in one; anything that writes or changes the database is refused, and it runs as the
+read-only user in a transaction that is rolled back. Tables after FROM and JOIN must be ones the source allows.
+The answer carries 50 rows unless asked for more, at most 200, at most 65536 bytes; a query gets 30 seconds.
+For MongoDB sources use connector_find and connector_aggregate.
 
-*only adds · repeat-safe · stays on this machine.*
+*read-only · repeat-safe · stays on this machine.*
 
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `source` | `string` | yes | — | The source's name, as connector_sources lists it. |
-| `collection` | `string` | yes | — | The collection, as connector_schema lists it. |
-| `format` | `string` | yes | — | The file's format: csv or xlsx. |
-| `file` | `string` | yes | — | The file's name, letters, digits, dots, dashes and underscores; the format's extension is added when missing. |
-| `filter` | `string?` | — | `null` | Which documents, as MongoDB Extended JSON, such as {"status": "paid", "total": {"$gt": 100}}; dates as {"$date": "2026-01-31T00:00:00Z"}, ids as {"$oid": "…"}; empty matches every one. |
-| `pipeline` | `string?` | — | `null` | The stages as a JSON array, when the rows come from a pipeline rather than a filter. |
+| `select` | `string` | yes | — | The SELECT, such as SELECT c.city, sum(o.total) FROM orders o JOIN customers c ON c.id = o.customer_id GROUP BY c.city. |
+| `limit` | `integer?` | — | `null` | How many rows to return: 50 when not given, at most 200. |
 
 <details><summary>JSON Schema</summary>
 
@@ -259,8 +259,54 @@ columns of their dotted paths. An export writes at most 100000 rows and says whe
       "description": "The source\u0027s name, as connector_sources lists it.",
       "type": "string"
     },
-    "collection": {
-      "description": "The collection, as connector_schema lists it.",
+    "select": {
+      "description": "The SELECT, such as SELECT c.city, sum(o.total) FROM orders o JOIN customers c ON c.id = o.customer_id GROUP BY c.city.",
+      "type": "string"
+    },
+    "limit": {
+      "description": "How many rows to return: 50 when not given, at most 200.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "source",
+    "select"
+  ]
+}
+```
+
+</details>
+
+## <code>connector_<wbr>export</code>
+
+Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task's card offers a
+person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
+of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there.
+
+*only adds · repeat-safe · stays on this machine.*
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `source` | `string` | yes | — | The source's name, as connector_sources lists it. |
+| `format` | `string` | yes | — | The file's format: csv or xlsx. |
+| `file` | `string` | yes | — | The file's name, letters, digits, dots, dashes and underscores; the format's extension is added when missing. |
+| `collection` | `string?` | — | `null` | For MongoDB, the collection, as connector_schema lists it; not used for SQL. |
+| `filter` | `string?` | — | `null` | Which documents, as MongoDB Extended JSON, such as {"status": "paid", "total": {"$gt": 100}}; dates as {"$date": "2026-01-31T00:00:00Z"}, ids as {"$oid": "…"}; empty matches every one. |
+| `pipeline` | `string?` | — | `null` | For MongoDB, the stages as a JSON array, when the rows come from a pipeline rather than a filter. |
+| `select` | `string?` | — | `null` | For SQL, the SELECT whose rows the file holds; not used for MongoDB. |
+
+<details><summary>JSON Schema</summary>
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "source": {
+      "description": "The source\u0027s name, as connector_sources lists it.",
       "type": "string"
     },
     "format": {
@@ -271,6 +317,14 @@ columns of their dotted paths. An export writes at most 100000 rows and says whe
       "description": "The file\u0027s name, letters, digits, dots, dashes and underscores; the format\u0027s extension is added when missing.",
       "type": "string"
     },
+    "collection": {
+      "description": "For MongoDB, the collection, as connector_schema lists it; not used for SQL.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
     "filter": {
       "description": "Which documents, as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}; empty matches every one.",
       "type": [
@@ -280,7 +334,15 @@ columns of their dotted paths. An export writes at most 100000 rows and says whe
       "default": null
     },
     "pipeline": {
-      "description": "The stages as a JSON array, when the rows come from a pipeline rather than a filter.",
+      "description": "For MongoDB, the stages as a JSON array, when the rows come from a pipeline rather than a filter.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "select": {
+      "description": "For SQL, the SELECT whose rows the file holds; not used for MongoDB.",
       "type": [
         "string",
         "null"
@@ -290,7 +352,6 @@ columns of their dotted paths. An export writes at most 100000 rows and says whe
   },
   "required": [
     "source",
-    "collection",
     "format",
     "file"
   ]

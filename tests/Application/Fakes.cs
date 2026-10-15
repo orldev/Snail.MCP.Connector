@@ -52,6 +52,8 @@ internal sealed class Fakes
 
     public Documents Database { get; } = new();
 
+    public SqlFake Tables { get; } = new();
+
     public Journal Written { get; } = new();
 
     public string? Root { get; set; } = $"/workspaces/{TaskId}/step-0";
@@ -65,7 +67,7 @@ internal sealed class Fakes
 
         var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
 
-        return new Queries(new SourceList(Sources), Database, Written, new NoFiles(), copy, TimeProvider.System, options);
+        return new Queries(new SourceList(Sources), Database, Tables, Written, new NoFiles(), copy, TimeProvider.System, options);
     }
 
     internal sealed class SourceList(Dictionary<string, ReachableSource> sources) : ISources
@@ -148,6 +150,31 @@ internal sealed class Fakes
                 await Task.Yield();
                 yield return row;
             }
+        }
+    }
+
+    internal sealed class SqlFake : ITables
+    {
+        public List<string> Asked { get; } = [];
+
+        public Task<Answer<IReadOnlyList<string>>> TablesAsync(ReachableSource source, CancellationToken cancellationToken) =>
+            Task.FromResult(Answer.Ok<IReadOnlyList<string>>(["public.accounts", "hr.salaries"]));
+
+        public Task<Answer<CollectionShape>> ShapeAsync(ReachableSource source, string table, CancellationToken cancellationToken) =>
+            Task.FromResult(Answer.Ok(new CollectionShape(table, 10, 3, [])));
+
+        public Task<Answer<RowPage>> QueryAsync(ReachableSource source, string select, RowLimit limit, CancellationToken cancellationToken)
+        {
+            Asked.Add(select);
+
+            return Task.FromResult(Answer.Ok(new RowPage(["""{"n": 1}"""], IsCut: false)));
+        }
+
+        public async IAsyncEnumerable<string> StreamAsync(ReachableSource source, string select, int most, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Asked.Add(select);
+            await Task.Yield();
+            yield return """{"n": 1}""";
         }
     }
 

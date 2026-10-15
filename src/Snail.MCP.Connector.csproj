@@ -10,6 +10,8 @@
     <SnailMcpNative>false</SnailMcpNative>
     <SnailMcpTransport>Http</SnailMcpTransport>
     <SnailMcpContainer>true</SnailMcpContainer>
+    <!-- SQL Server's client refuses to open a connection without culture data: it maps the server's collations through ICU. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <Version>0.1.0</Version>
     <Description>Company databases for agents: MongoDB, SQL Server, PostgreSQL; read-only, writes on approval.</Description>
     <PackageTags>mcp;mcp-server;modelcontextprotocol;ai;mongodb;database</PackageTags>
@@ -20,7 +22,10 @@
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
 
   <ItemGroup>

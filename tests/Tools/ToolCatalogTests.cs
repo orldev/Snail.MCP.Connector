@@ -25,7 +25,7 @@ public sealed partial class ToolCatalogTests
     public void Tools_EveryOne_IsNamedForThisServer()
     {
         Assert.Equal(
-            ["connector_aggregate", "connector_apply", "connector_count", "connector_diagnose", "connector_export", "connector_find", "connector_journal", "connector_propose_write", "connector_schema", "connector_sources"],
+            ["connector_aggregate", "connector_apply", "connector_count", "connector_diagnose", "connector_export", "connector_find", "connector_journal", "connector_propose_write", "connector_query", "connector_schema", "connector_sources"],
             Tools().Order(StringComparer.Ordinal));
     }
 
@@ -70,6 +70,10 @@ public sealed partial class ToolCatalogTests
     [InlineData(ToolDescriptions.Aggregate, nameof(ConnectorOptions.MostBytes))]
     [InlineData(ToolDescriptions.Aggregate, nameof(ConnectorOptions.QuerySeconds))]
     [InlineData(ToolDescriptions.Export, nameof(ConnectorOptions.MostExportRows))]
+    [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.Rows))]
+    [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.MostRows))]
+    [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.MostBytes))]
+    [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.QuerySeconds))]
     [InlineData(ToolDescriptions.Limit, nameof(ConnectorOptions.Rows))]
     [InlineData(ToolDescriptions.Limit, nameof(ConnectorOptions.MostRows))]
     [InlineData(ToolDescriptions.JournalMost, nameof(ConnectorOptions.MostRows))]
