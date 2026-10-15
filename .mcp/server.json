@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.orldev/snail-mcp-connector",
+  "description": "Company databases for the platform's agents: MongoDB, SQL Server and PostgreSQL, read by a read-only user, written only after a human's approval.",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "nuget",
+      "identifier": "Snail.MCP.Connector",
+      "version": "0.1.0",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:8830/mcp"
+      },
+      "packageArguments": [],
+      "environmentVariables": []
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/orldev/Snail.MCP.Connector",
+    "source": "github"
+  }
+}

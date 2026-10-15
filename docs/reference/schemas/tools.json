@@ -1,0 +1,17 @@
+[
+  {
+    "name": "connector_diagnose",
+    "description": "Say what state this server is in: its name, its version and the runtime it runs on. Changes nothing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  }
+]

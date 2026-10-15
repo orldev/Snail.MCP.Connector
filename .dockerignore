@@ -1,0 +1,4 @@
+# What the image's build is not to see: this machine's build output and the repository's history.
+**/bin/
+**/obj/
+.git/

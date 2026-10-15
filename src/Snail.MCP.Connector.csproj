@@ -1,0 +1,23 @@
+<Project Sdk="Snail.Sdk.Mcp">
+
+  <PropertyGroup>
+    <SnailMcpNative>false</SnailMcpNative>
+    <SnailMcpTransport>Http</SnailMcpTransport>
+    <SnailMcpContainer>true</SnailMcpContainer>
+    <Version>0.1.0</Version>
+    <Description>Company databases for the platform's agents: MongoDB, SQL Server and PostgreSQL, read by a read-only user, written only after a human's approval.</Description>
+    <PackageTags>mcp;mcp-server;modelcontextprotocol;ai</PackageTags>
+    <RepositoryUrl>https://github.com/orldev/Snail.MCP.Connector</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/orldev/Snail.MCP.Connector</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Snail.MCP.Connector.Tests" />
+    <InternalsVisibleTo Include="Snail.MCP.Connector.Benchmarks" />
+  </ItemGroup>
+
+</Project>

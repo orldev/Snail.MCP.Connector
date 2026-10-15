@@ -1,0 +1,19 @@
+name: server image
+
+# The image of the server (SnailMcpContainer), built on every push and pull request so a broken Dockerfile shows before
+# a merge, and pushed to ghcr.io from a version tag.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: orldev/Snail.Sdk/.github/workflows/mcp-image.yml@v1
