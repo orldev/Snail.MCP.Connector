@@ -54,6 +54,68 @@ public static class Messages
     /// <summary>A failure that said nothing about itself.</summary>
     public const string Nothing = "Nothing came back.";
 
+    /// <summary>An operation the proposal does not know.</summary>
+    public const string BadOperation = "The operation is update, update_one, insert or delete.";
+
+    /// <summary>An update or delete that names no document.</summary>
+    public const string EmptyFilter = "An update or a delete needs a filter that names the documents: an empty one would touch every document of the collection.";
+
+    /// <summary>How to narrow it.</summary>
+    public const string EmptyFilterHint = "Name the documents by a field, such as {\"number\": \"2026-0042\"}; count first with connector_count.";
+
+    /// <summary>How an update is written.</summary>
+    public const string UpdateHint = "Write the update as field operators, such as {\"$set\": {\"status\": \"paid\"}}: $set, $unset, $inc, $mul, $min, $max, $rename, $currentDate, $push, $pull, $addToSet, $pop.";
+
+    /// <summary>An insert that is not documents.</summary>
+    public const string NotInsertable = "An insert takes a JSON array of document objects.";
+
+    /// <summary>How to make a large write.</summary>
+    public const string TooManyHint = "Narrow the filter, or split the work into several proposals a person can read.";
+
+    /// <summary>The source has no writing user.</summary>
+    public const string NoWriter = "This source has no user that may write: a person declared it read-only.";
+
+    /// <summary>What to do about it.</summary>
+    public const string NoWriterHint = "Say in your answer what you would change; a person adds a writing user to the source if writes are wanted.";
+
+    /// <summary>The server has no channel for a person's decision.</summary>
+    public const string NoApprovals = "Writes are off on this server: no approval key is set, so no person's decision could reach it.";
+
+    /// <summary>How to turn them on.</summary>
+    public const string NoApprovalsHint = "Set SNAIL_MCP_CONNECTOR_APPROVAL_KEY; on the stand, deploy/stand.sh up sets it.";
+
+    /// <summary>What the agent does after proposing.</summary>
+    public static string Proposed(string id) =>
+        $"Nothing is written yet. Call request_write_approval with server \"connector\" and proposal \"{id}\": the task waits until the stand's owner allows or refuses it. When the task goes on with the approval, call connector_apply with this proposal.";
+
+    /// <summary>No proposal of that id.</summary>
+    public static string NoProposal(string id) => $"No proposal is called \"{id}\".";
+
+    /// <summary>A proposal of another task.</summary>
+    public const string OtherTask = "This proposal was made by another task; only the task that proposed it may apply it.";
+
+    /// <summary>A proposal nobody decided yet.</summary>
+    public const string NotDecided = "Nobody allowed this proposal yet: nothing was written.";
+
+    /// <summary>What to do meanwhile.</summary>
+    public const string NotDecidedHint = "Call request_write_approval for it, and apply it once the task goes on with the approval.";
+
+    /// <summary>A refused proposal.</summary>
+    public static string Refused(string? comment) => $"A person refused this write{(string.IsNullOrWhiteSpace(comment) ? "." : $": {comment}")}";
+
+    /// <summary>A proposal that already ran.</summary>
+    public const string AlreadyApplied = "This proposal already ran; a write runs once.";
+
+    /// <summary>A proposal past its days.</summary>
+    public static string Expired(int days) => $"This proposal is older than {days} days and can no longer be applied: propose it again.";
+
+    /// <summary>An update with operators a proposal does not use.</summary>
+    public static string BadUpdate(string? operation) =>
+        operation is null ? "The update changes nothing." : $"{operation} is not an update operator a proposal may use.";
+
+    /// <summary>A write larger than one proposal may be.</summary>
+    public static string TooMany(long count, int most) => $"The write would touch {count} documents; one proposal touches at most {most}.";
+
     /// <summary>A source of that name is not declared.</summary>
     public static string NoSource(string name) => $"No source is called \"{name}\".";
 

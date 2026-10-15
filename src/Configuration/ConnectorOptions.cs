@@ -38,4 +38,17 @@ public sealed class ConnectorOptions
 
     /// <summary>Days the journal of queries keeps.</summary>
     public int JournalDays { get; set; } = 365;
+
+    /// <summary>The key the stand's dashboard shows a proposal and gives its decision with; empty keeps writing off.</summary>
+    /// <remarks>The agent never sees it: it is how the server tells a person's decision from anything a model could send.</remarks>
+    public string ApprovalKey { get; set; } = string.Empty;
+
+    /// <summary>Documents one write may touch at most; a proposal matching more is refused, to be narrowed.</summary>
+    public int MostWritten { get; set; } = 1000;
+
+    /// <summary>Documents of the matched ones a proposal shows a person.</summary>
+    public int ProposalSample { get; set; } = 3;
+
+    /// <summary>Days a proposal waits for a decision before it can no longer be applied.</summary>
+    public int ProposalDays { get; set; } = 7;
 }

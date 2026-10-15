@@ -1,6 +1,7 @@
 {
   "families": [
     { "type": "ConnectorTools", "slug": "databases", "title": "Databases" },
+    { "type": "WriteTools", "slug": "writes", "title": "Writes" },
     { "type": "DiagnosticsTools", "slug": "diagnostics", "title": "Diagnostics" }
   ]
 }

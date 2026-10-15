@@ -27,6 +27,7 @@ public static class ConnectorServerExtensions
                 .RefuseWhatWasNotGranted()
                 .WithHttpTransport()
                 .WithTools<ConnectorTools>()
+                .WithTools<WriteTools>()
                 .WithTools<DiagnosticsTools>();
 
             return builder;
@@ -40,6 +41,7 @@ public static class ConnectorServerExtensions
         {
             app.MapMcp("/mcp");
             app.MapGet("/healthz", () => Results.Ok());
+            app.MapApprovals();
 
             return app;
         }

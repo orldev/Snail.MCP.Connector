@@ -29,6 +29,8 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
 
     private readonly ConcurrentDictionary<string, MongoClient> _clients = new(StringComparer.Ordinal);
 
+    private readonly ConcurrentDictionary<string, MongoClient> _writers = new(StringComparer.Ordinal);
+
     /// <inheritdoc />
     public async Task<Answer<IReadOnlyList<string>>> CollectionsAsync(ReachableSource source, CancellationToken cancellationToken) =>
         await GuardedAsync(source, async () =>
@@ -86,6 +88,40 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
             Database(source).GetCollection<BsonDocument>(collection).CountDocumentsAsync(BsonDocument.Parse(filter), new CountOptions { MaxTime = TimeSpan.FromSeconds(30) }, cancellationToken), 30);
 
     /// <inheritdoc />
+    public async Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string collection, string filter, int sample, CancellationToken cancellationToken) =>
+        await GuardedAsync(source, async () =>
+        {
+            var documents = Database(source).GetCollection<BsonDocument>(collection);
+            var matching = BsonDocument.Parse(filter);
+            long matched = await documents.CountDocumentsAsync(matching, new CountOptions { MaxTime = TimeSpan.FromSeconds(30) }, cancellationToken);
+            var shown = await documents.Find(matching, new FindOptions { MaxTime = TimeSpan.FromSeconds(30) }).Limit(sample).ToListAsync(cancellationToken);
+
+            return new WritePreview(matched, [.. shown.Select(Row)]);
+        }, 30);
+
+    /// <inheritdoc />
+    /// <remarks>By the writing user, on the primary — a write never goes anywhere else — and only what the proposal says.</remarks>
+    public async Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
+    {
+        if (source.Access.WriteUri is not { } uri)
+            return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
+
+        return await GuardedAsync(source, async () =>
+        {
+            var documents = _writers.GetOrAdd(uri, Writer).GetDatabase(source.Source.Database).GetCollection<BsonDocument>(proposal.Collection);
+            var filter = BsonDocument.Parse(proposal.Filter);
+
+            return proposal.Operation switch
+            {
+                WriteOperation.Insert => await InsertAsync(documents, proposal.Change, cancellationToken),
+                WriteOperation.Update => (await documents.UpdateManyAsync(filter, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
+                WriteOperation.UpdateOne => (await documents.UpdateOneAsync(filter, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
+                _ => (await documents.DeleteManyAsync(filter, cancellationToken)).DeletedCount
+            };
+        }, 30);
+    }
+
+    /// <inheritdoc />
     public async IAsyncEnumerable<string> StreamAsync(ReachableSource source, DocumentQuery query, string? pipeline, int most, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var documents = Database(source).GetCollection<BsonDocument>(query.Collection);
@@ -105,8 +141,27 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        foreach (var client in _clients.Values)
+        foreach (var client in _clients.Values.Concat(_writers.Values))
             client.Dispose();
+    }
+
+    private static async Task<long> InsertAsync(IMongoCollection<BsonDocument> documents, string change, CancellationToken cancellationToken)
+    {
+        BsonDocument[] added = [.. BsonSerializer.Deserialize<BsonArray>(change).Select(document => document.AsBsonDocument)];
+        await documents.InsertManyAsync(added, cancellationToken: cancellationToken);
+
+        return added.Length;
+    }
+
+    private static MongoClient Writer(string uri)
+    {
+        var settings = MongoClientSettings.FromConnectionString(uri);
+        settings.ReadPreference = ReadPreference.Primary;
+        settings.ServerSelectionTimeout = TimeSpan.FromSeconds(10);
+        settings.ConnectTimeout = TimeSpan.FromSeconds(10);
+        settings.ApplicationName = "snail-mcp-connector-writer";
+
+        return new MongoClient(settings);
     }
 
     /// <summary>A document as one compact line of relaxed Extended JSON, its fractions written the shortest way that reads back the same.</summary>

@@ -133,6 +133,41 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         Assert.Equal(6, rows);
     }
 
+    [Fact]
+    public async Task PreviewAsync_Filter_CountsAndShowsAFew()
+    {
+        var preview = (await _documents.PreviewAsync(mongo.Source, "orders", """{"status": "paid"}""", 3, CancellationToken.None)).Value!;
+
+        Assert.Equal(10, preview.Matched);
+        Assert.Equal(3, preview.Sample.Count);
+    }
+
+    /// <summary>An allowed update runs by the writing user and changes exactly the matched documents.</summary>
+    [Fact]
+    public async Task WriteAsync_AllowedUpdate_ChangesTheMatchedDocuments()
+    {
+        var writable = mongo.Source with { Source = mongo.Source.Source with { Collections = [Source.Every], CanWrite = true }, Access = mongo.Source.Access with { WriteUri = mongo.Source.Access.ReadUri } };
+        var deals = new MongoClient(writable.Access.ReadUri).GetDatabase("sales").GetCollection<BsonDocument>("deals");
+        await deals.InsertManyAsync([new BsonDocument("stage", "lead"), new BsonDocument("stage", "lead"), new BsonDocument("stage", "lost")]);
+        var proposal = Proposal("deals", WriteOperation.Update, """{"stage": "lead"}""", """{"$set": {"stage": "won"}}""");
+
+        var written = await _documents.WriteAsync(writable, proposal, CancellationToken.None);
+
+        Assert.Equal(2, written.Value);
+        Assert.Equal(2, await deals.CountDocumentsAsync(new BsonDocument("stage", "won")));
+        Assert.Equal(1, await deals.CountDocumentsAsync(new BsonDocument("stage", "lost")));
+    }
+
+    [Fact]
+    public async Task WriteAsync_SourceWithoutAWriter_WritesNothing()
+    {
+        var proposal = Proposal("orders", WriteOperation.Delete, """{"number": 1}""", "{}");
+
+        var written = await _documents.WriteAsync(mongo.Source, proposal, CancellationToken.None);
+
+        Assert.Equal(Messages.NoWriter, written.Error);
+    }
+
     /// <summary>A refused login says so in words, and the password in the connection string stays out of them.</summary>
     [Fact]
     public async Task CountAsync_WrongPassword_AnswersWithoutThePassword()
@@ -154,4 +189,18 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         Assert.Null(found.Value);
         Assert.NotNull(found.Error);
     }
+
+    private static WriteProposal Proposal(string collection, WriteOperation operation, string filter, string change) => new()
+    {
+        Id = "w0000000000000001",
+        Task = "task",
+        Source = "sales",
+        Collection = collection,
+        Operation = operation,
+        Filter = filter,
+        Change = change,
+        Reason = "a test",
+        Matched = 1,
+        At = DateTimeOffset.UtcNow
+    };
 }

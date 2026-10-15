@@ -11,7 +11,8 @@ namespace Snail.MCP.Connector.Tools;
 /// <summary>Answers as tool results: JSON with an ok flag, the data on success, error and hint otherwise.</summary>
 public static class ToolResponse
 {
-    private static readonly JsonSerializerOptions Options = new()
+    /// <summary>How the answers are written: compact, and every letter as it is rather than escaped.</summary>
+    public static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = false,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -68,6 +69,34 @@ public static class ToolResponse
     /// <summary>The task's queries.</summary>
     public static CallToolResult From(Answer<IReadOnlyList<QueryRecord>> answer) =>
         Of(answer, queries => new JsonObject { ["queries"] = new JsonArray([.. queries.Select(Data)]) });
+
+    /// <summary>A proposal to write, or how one ran.</summary>
+    public static CallToolResult From(Answer<WriteProposal> answer) =>
+        Of(answer, proposal => Data(proposal));
+
+    /// <summary>A proposal as the agent and the dashboard read it.</summary>
+    public static JsonObject Data(WriteProposal proposal) => new()
+    {
+        ["proposal"] = proposal.Id,
+        ["state"] = Word(proposal.State),
+        ["source"] = proposal.Source,
+        ["collection"] = proposal.Collection,
+        ["operation"] = Word(proposal.Operation),
+        ["filter"] = JsonNode.Parse(proposal.Filter),
+        ["change"] = JsonNode.Parse(proposal.Change),
+        ["reason"] = proposal.Reason,
+        ["matched"] = proposal.Matched,
+        ["sample"] = new JsonArray([.. proposal.Sample.Select(row => JsonNode.Parse(row))]),
+        ["at"] = proposal.At.ToString("O", CultureInfo.InvariantCulture),
+        ["decidedBy"] = proposal.DecidedBy,
+        ["comment"] = proposal.Comment,
+        ["written"] = proposal.Written,
+        ["next"] = proposal.State switch
+        {
+            ProposalState.Pending => Messages.Proposed(proposal.Id),
+            _ => null
+        }
+    };
 
     /// <summary>A result carrying the data.</summary>
     public static CallToolResult Success(JsonObject data) => new()

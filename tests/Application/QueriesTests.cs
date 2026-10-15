@@ -95,9 +95,9 @@ public sealed class QueriesTests
     [Fact]
     public async Task CountAsync_NoSuchSource_SaysWhereTheNamesAre()
     {
-        var counted = await _fakes.Queries().CountAsync("crm", "deals", null, CancellationToken.None);
+        var counted = await _fakes.Queries().CountAsync("ghost", "deals", null, CancellationToken.None);
 
-        Assert.Equal(Messages.NoSource("crm"), counted.Error);
+        Assert.Equal(Messages.NoSource("ghost"), counted.Error);
         Assert.Equal(Messages.NoSourceHint, counted.Hint);
     }
 

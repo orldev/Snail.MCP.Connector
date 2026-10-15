@@ -68,6 +68,43 @@ public static class ToolDescriptions
         whether it failed — newest first, so a query is not repeated. Every query is written there, for the company to see.
         """;
 
+    /// <summary>The operations a write proposes; a guard test compares them with <c>WriteOperation</c>.</summary>
+    public const string Operations = "update, update_one, insert or delete";
+
+    /// <summary>The contract of connector_propose_write.</summary>
+    public const string ProposeWrite =
+        $"""
+        Propose a change to a company database — {Operations} — when the task needs one. Nothing is written: the server
+        dry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and
+        answers a proposal id. Then call request_write_approval with server "connector" and that proposal: the task waits
+        until the stand's owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming
+        the documents; an update is field operators such as $set; one proposal touches at most 1000 documents. The source
+        must have a writing user.
+        """;
+
+    /// <summary>The contract of connector_apply.</summary>
+    public const string Apply =
+        """
+        Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents it
+        changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet, refused,
+        or already run is refused with what to do.
+        """;
+
+    /// <summary>The operation parameter.</summary>
+    public const string Operation = $"What the write does: {Operations}.";
+
+    /// <summary>The filter parameter of connector_propose_write.</summary>
+    public const string WriteFilter = """Which documents an update or a delete touches, such as {"number": "2026-0042"}; it may not be empty. Not used by an insert.""";
+
+    /// <summary>The change parameter of connector_propose_write.</summary>
+    public const string Change = """For an update, the field operators, such as {"$set": {"status": "paid"}}; for an insert, a JSON array of the documents; not used by a delete.""";
+
+    /// <summary>The reason parameter of connector_propose_write.</summary>
+    public const string Reason = "Why the task needs this write, in one or two sentences for the person who decides.";
+
+    /// <summary>The proposal parameter of connector_apply.</summary>
+    public const string Proposal = "The proposal id connector_propose_write answered.";
+
     /// <summary>The contract of connector_diagnose.</summary>
     public const string Diagnose = "Say whether the server can reach the stand's sources: its version, Vault, and how many sources are declared. Changes nothing.";
 

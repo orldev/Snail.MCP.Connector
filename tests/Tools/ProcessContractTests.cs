@@ -77,7 +77,7 @@ public sealed class ProcessContractTests : IAsyncLifetime
 
         var tools = await session.ListToolsAsync(cancellationToken: cancellation.Token);
 
-        Assert.Equal(8, tools.Count);
+        Assert.Equal(10, tools.Count);
     }
 
     /// <summary>The guard rules of every Snail server, on the list a model receives.</summary>
@@ -126,6 +126,17 @@ public sealed class ProcessContractTests : IAsyncLifetime
 
         Assert.True(result.IsError);
         Assert.Contains("'connector_count' was not granted", result.Text(), StringComparison.Ordinal);
+    }
+
+    /// <summary>The dashboard's door answers nobody without the key: an agent that finds the address gets nothing from it.</summary>
+    [Fact]
+    public async Task Proposal_WithoutTheKey_IsNotFound()
+    {
+        using var http = new HttpClient { BaseAddress = _address };
+
+        using var answer = await http.PostAsync(new Uri("/proposals/w0123456789abcdef/decision", UriKind.Relative), new StringContent("""{"allow":true,"by":"agent"}""", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
     }
 
     private Task<McpClient> SessionAsync(string? query, CancellationToken cancellationToken) =>

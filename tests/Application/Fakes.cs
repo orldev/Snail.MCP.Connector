@@ -15,8 +15,40 @@ internal sealed class Fakes
     public Dictionary<string, ReachableSource> Sources { get; } = new(StringComparer.Ordinal)
     {
         ["sales"] = new(new Source("sales", SourceKind.MongoDb, "sales", ["orders", "customers"]), new SourceAccess("mongodb://reader@db/sales", null)),
-        ["ledger"] = new(new Source("ledger", SourceKind.SqlServer, "ledger", [Source.Every]), new SourceAccess("Server=db;User=reader", null))
+        ["ledger"] = new(new Source("ledger", SourceKind.SqlServer, "ledger", [Source.Every]), new SourceAccess("Server=db;User=reader", null)),
+        ["crm"] = new(new Source("crm", SourceKind.MongoDb, "crm", ["deals"]) { CanWrite = true }, new SourceAccess("mongodb://reader@db/crm", "mongodb://writer@db/crm"))
     };
+
+    public Proposals Kept { get; } = new();
+
+    public ConnectorOptions Settings { get; } = new() { ApprovalKey = "key-of-the-stand" };
+
+    public Writes Writes(TimeProvider? clock = null)
+    {
+        var options = Options.Create(Settings);
+        var context = new DefaultHttpContext();
+        if (Root is not null)
+            context.Request.QueryString = new QueryString($"?root={Root}");
+
+        var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
+
+        return new Writes(new SourceList(Sources), Database, Kept, Written, copy, clock ?? TimeProvider.System, options);
+    }
+
+    internal sealed class Proposals : IProposals
+    {
+        public Dictionary<string, WriteProposal> All { get; } = new(StringComparer.Ordinal);
+
+        public Task SaveAsync(WriteProposal proposal, CancellationToken cancellationToken)
+        {
+            All[proposal.Id] = proposal;
+
+            return Task.CompletedTask;
+        }
+
+        public Task<WriteProposal?> FindAsync(string id, CancellationToken cancellationToken) =>
+            Task.FromResult(All.GetValueOrDefault(id));
+    }
 
     public Documents Database { get; } = new();
 
@@ -87,6 +119,24 @@ internal sealed class Fakes
             Asked.Add($"count {collection}");
 
             return Task.FromResult(Answer.Ok(42L));
+        }
+
+        public long Matched { get; set; } = 3;
+
+        public List<WriteProposal> WrittenProposals { get; } = [];
+
+        public Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string collection, string filter, int sample, CancellationToken cancellationToken)
+        {
+            Asked.Add($"preview {collection}");
+
+            return Task.FromResult(Answer.Ok(new WritePreview(Matched, ["""{"stage": "lead"}"""])));
+        }
+
+        public Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
+        {
+            WrittenProposals.Add(proposal);
+
+            return Task.FromResult(Answer.Ok(proposal.Matched));
         }
 
         public async IAsyncEnumerable<string> StreamAsync(ReachableSource source, DocumentQuery query, string? pipeline, int most, [EnumeratorCancellation] CancellationToken cancellationToken)

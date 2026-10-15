@@ -19,6 +19,12 @@ public interface IDocuments
     /// <summary>How many documents a filter matches.</summary>
     Task<Answer<long>> CountAsync(ReachableSource source, string collection, string filter, CancellationToken cancellationToken);
 
+    /// <summary>How many documents a write's filter matches, and a few of them as they are now: the dry run, by the read-only user.</summary>
+    Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string collection, string filter, int sample, CancellationToken cancellationToken);
+
+    /// <summary>Runs an allowed write by the source's writing user; answers how many documents it changed.</summary>
+    Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken);
+
     /// <summary>Every row of a filter or a pipeline, up to <paramref name="most"/>, one at a time for a file to take them.</summary>
     IAsyncEnumerable<string> StreamAsync(ReachableSource source, DocumentQuery query, string? pipeline, int most, CancellationToken cancellationToken);
 }
@@ -36,3 +42,8 @@ public sealed record DocumentQuery(string Collection, string Filter, string? Pro
 /// <param name="Bytes">Bytes of rows at most.</param>
 /// <param name="Seconds">Seconds the database gets.</param>
 public sealed record RowLimit(int Rows, int Bytes, int Seconds);
+
+/// <summary>What a write's filter matches now.</summary>
+/// <param name="Matched">How many documents.</param>
+/// <param name="Sample">A few of them as relaxed Extended JSON.</param>
+public sealed record WritePreview(long Matched, IReadOnlyList<string> Sample);

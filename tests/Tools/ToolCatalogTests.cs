@@ -25,7 +25,7 @@ public sealed partial class ToolCatalogTests
     public void Tools_EveryOne_IsNamedForThisServer()
     {
         Assert.Equal(
-            ["connector_aggregate", "connector_count", "connector_diagnose", "connector_export", "connector_find", "connector_journal", "connector_schema", "connector_sources"],
+            ["connector_aggregate", "connector_apply", "connector_count", "connector_diagnose", "connector_export", "connector_find", "connector_journal", "connector_propose_write", "connector_schema", "connector_sources"],
             Tools().Order(StringComparer.Ordinal));
     }
 
@@ -43,6 +43,21 @@ public sealed partial class ToolCatalogTests
             Assert.Contains(ToolResponse.Word(format), Words(ToolDescriptions.Formats));
     }
 
+    [Fact]
+    public void Operations_EveryWrite_IsNamedAsTheRulesReadIt()
+    {
+        foreach (var operation in Enum.GetValues<WriteOperation>())
+            Assert.Contains(Words(ToolDescriptions.Operations), word => Snail.MCP.Connector.Application.WriteRules.Operation(word).Value == operation);
+    }
+
+    /// <summary>Every update operator the rules let through is named where the model reads how to write one.</summary>
+    [Fact]
+    public void Update_EveryAllowedOperator_IsNamedInTheHint()
+    {
+        foreach (string operation in Snail.MCP.Connector.Application.WriteRules.Operators)
+            Assert.Contains(operation, Snail.MCP.Connector.Application.Messages.UpdateHint, StringComparison.Ordinal);
+    }
+
     /// <summary>Every number a description names is the default it describes.</summary>
     [Theory]
     [InlineData(ToolDescriptions.Schema, nameof(ConnectorOptions.Sample))]
@@ -58,6 +73,8 @@ public sealed partial class ToolCatalogTests
     [InlineData(ToolDescriptions.Limit, nameof(ConnectorOptions.Rows))]
     [InlineData(ToolDescriptions.Limit, nameof(ConnectorOptions.MostRows))]
     [InlineData(ToolDescriptions.JournalMost, nameof(ConnectorOptions.MostRows))]
+    [InlineData(ToolDescriptions.ProposeWrite, nameof(ConnectorOptions.MostWritten))]
+    [InlineData(ToolDescriptions.Apply, nameof(ConnectorOptions.ProposalDays))]
     public void Description_NumberItNames_IsTheDefault(string description, string option)
     {
         object? value = typeof(ConnectorOptions).GetProperty(option)!.GetValue(Defaults);

@@ -258,6 +258,83 @@
     "skill": null
   },
   {
+    "name": "connector_propose_write",
+    "description": "Propose a change to a company database \u2014 update, update_one, insert or delete \u2014 when the task needs one. Nothing is written: the server\ndry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and\nanswers a proposal id. Then call request_write_approval with server \u0022connector\u0022 and that proposal: the task waits\nuntil the stand\u0027s owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming\nthe documents; an update is field operators such as $set; one proposal touches at most 1000 documents. The source\nmust have a writing user.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection, as connector_schema lists it.",
+          "type": "string"
+        },
+        "operation": {
+          "description": "What the write does: update, update_one, insert or delete.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the task needs this write, in one or two sentences for the person who decides.",
+          "type": "string"
+        },
+        "filter": {
+          "description": "Which documents an update or a delete touches, such as {\u0022number\u0022: \u00222026-0042\u0022}; it may not be empty. Not used by an insert.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "change": {
+          "description": "For an update, the field operators, such as {\u0022$set\u0022: {\u0022status\u0022: \u0022paid\u0022}}; for an insert, a JSON array of the documents; not used by a delete.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "collection",
+        "operation",
+        "reason"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_apply",
+    "description": "Run a proposal the stand\u0027s owner allowed, once, as the source\u0027s writing user, and get back how many documents it\nchanged. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet, refused,\nor already run is refused with what to do.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal": {
+          "description": "The proposal id connector_propose_write answered.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
     "name": "connector_diagnose",
     "description": "Say whether the server can reach the stand\u0027s sources: its version, Vault, and how many sources are declared. Changes nothing.",
     "inputSchema": {
