@@ -49,4 +49,51 @@ public sealed class SqlRulesTests
     [Fact]
     public void Select_EveryTableAllowed_AcceptsAnyTable() =>
         Assert.NotNull(SqlRules.Select("SELECT * FROM hr.salaries", Ledger with { Collections = [Source.Every] }).Value);
+
+    [Fact]
+    public void Read_JoinWithCte_NamesTheTablesOnceAndNotTheCte() =>
+        Assert.Equal(["public.orders", "customers"], SqlRules.Read("WITH paid AS (SELECT * FROM public.orders) SELECT * FROM paid JOIN customers c ON true JOIN public.orders o ON true"));
+
+    [Theory]
+    [InlineData("""{"id": 7}""")]
+    [InlineData("""{"status": "open", "due": {"$lt": "2026-06-01", "$gte": "2026-01-01"}}""")]
+    [InlineData("""{"city": {"$in": ["Madrid", "Bilbao"]}, "paid_at": {"$null": true}}""")]
+    public void WriteFilter_ColumnsAndComparisons_IsAccepted(string filter) =>
+        Assert.NotNull(SqlWriteRules.Filter(filter).Value);
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[1]")]
+    [InlineData("""{"id": {"$regex": "7"}}""")]
+    [InlineData("""{"id": {"$in": []}}""")]
+    [InlineData("""{"id": {"$null": "yes"}}""")]
+    [InlineData("""{"id) OR (1=1": 7}""")]
+    [InlineData("""{"id": [7]}""")]
+    public void WriteFilter_AnythingElse_IsRefused(string filter) =>
+        Assert.Null(SqlWriteRules.Filter(filter).Value);
+
+    [Theory]
+    [InlineData("""{"$set": {"status": "paid", "note": null}}""", true)]
+    [InlineData("""{"$inc": {"stock": -1}}""", true)]
+    [InlineData("""{"$inc": {"stock": "1"}}""", false)]
+    [InlineData("""{"status": "paid"}""", false)]
+    [InlineData("""{"$set": {}}""", false)]
+    public void WriteUpdate_SetAndIncOnly(string update, bool isAccepted) =>
+        Assert.Equal(isAccepted, SqlWriteRules.Update(update).Value is not null);
+
+    [Theory]
+    [InlineData("""[{"id": 1, "amount": 10.5}]""", true)]
+    [InlineData("""[{"id": 1, "lines": [1, 2]}]""", false)]
+    [InlineData("""[{"bad name": 1}]""", false)]
+    public void WriteRows_PlainColumnsOnly(string rows, bool isAccepted) =>
+        Assert.Equal(isAccepted, SqlWriteRules.Rows(rows, 1000).Value is not null);
+
+    [Theory]
+    [InlineData("invoices", true)]
+    [InlineData("public.invoices", true)]
+    [InlineData("a.b.c", false)]
+    [InlineData("invoices;", false)]
+    [InlineData("\"invoices\"", false)]
+    public void IsTable_OneOrTwoPlainNames(string table, bool isTable) =>
+        Assert.Equal(isTable, SqlWriteRules.IsTable(table));
 }

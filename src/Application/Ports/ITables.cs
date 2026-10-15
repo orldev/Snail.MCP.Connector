@@ -15,4 +15,16 @@ public interface ITables
 
     /// <summary>Every row of a SELECT, up to one past <paramref name="most"/>, one at a time for a file to take them.</summary>
     IAsyncEnumerable<string> StreamAsync(ReachableSource source, string select, int most, CancellationToken cancellationToken);
+
+    /// <summary>How many rows a write's filter matches and a few of them as they are, read by the read-only user.</summary>
+    /// <param name="source">The source.</param>
+    /// <param name="table">The table, checked by <see cref="SqlWriteRules.IsTable"/>.</param>
+    /// <param name="filter">The filter, checked by <see cref="SqlWriteRules.Filter"/>.</param>
+    /// <param name="sample">How many rows to show.</param>
+    /// <param name="cancellationToken">Stops the read.</param>
+    Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string table, string filter, int sample, CancellationToken cancellationToken);
+
+    /// <summary>Runs an allowed write by the writing user in one transaction; answers how many rows it changed.</summary>
+    /// <remarks>A write that would touch more rows than the proposal matched is rolled back: a person allowed what they read.</remarks>
+    Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken);
 }

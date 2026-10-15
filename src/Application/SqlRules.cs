@@ -46,6 +46,15 @@ public static partial class SqlRules
         return kept is null ? Answer.Ok(text) : Answer.Failed<string>(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source));
     }
 
+    /// <summary>The tables a statement reads after FROM and JOIN, each once, in the order written — as the journal names them.</summary>
+    public static IReadOnlyList<string> Read(string statement)
+    {
+        string bare = Bare(statement);
+        IReadOnlySet<string> named = Named(bare);
+
+        return [.. Tables(bare).Where(table => !named.Contains(table)).Distinct(StringComparer.Ordinal)];
+    }
+
     /// <summary>Whether the source allows a table named bare or with its schema.</summary>
     public static bool IsAllowed(Source source, string table)
     {

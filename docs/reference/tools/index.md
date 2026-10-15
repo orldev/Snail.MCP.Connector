@@ -14,5 +14,5 @@ The names, descriptions and schemas are generated from the server itself, so the
 | [`connector_export`](databases.md#connector_export) | Databases | Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task's card offers a person to download. |
 | [`connector_journal`](databases.md#connector_journal) | Databases | Read the queries this task already made — which source and collection, what was asked, how many rows came back, whether it failed — newest first, so a query … |
 | [`connector_propose_write`](writes.md#connector_propose_write) | Writes | Propose a change to a company database — update, update_one, insert or delete — when the task needs one. |
-| [`connector_apply`](writes.md#connector_apply) | Writes | Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents it changed. |
+| [`connector_apply`](writes.md#connector_apply) | Writes | Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents or rows it changed. |
 | [`connector_diagnose`](diagnostics.md#connector_diagnose) | Diagnostics | Say whether the server can reach the stand's sources: its version, Vault, and how many sources are declared. |

@@ -3,10 +3,12 @@ using System.Data.Common;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Npgsql;
+using NpgsqlTypes;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Application.Ports;
 
@@ -99,6 +101,67 @@ public sealed partial class SqlTables : ITables
         await transaction.RollbackAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string table, string filter, int sample, CancellationToken cancellationToken) =>
+        await GuardedAsync(source, 30, async (connection, transaction) =>
+        {
+            string name = Quoted(source.Source.Kind, await ResolvedAsync(connection, transaction, table, cancellationToken));
+            var matching = JsonNode.Parse(filter)!.AsObject();
+
+            await using var count = Bound(source.Source.Kind, connection, transaction, SqlStatements.Count(source.Source.Kind, name, matching), 30);
+            long matched = Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+
+            List<string> shown = [];
+            await using var rows = Bound(source.Source.Kind, connection, transaction, SqlStatements.Sample(source.Source.Kind, name, matching, sample), 30);
+            await using var reader = await rows.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                shown.Add(Row(reader));
+
+            return new WritePreview(matched, shown);
+        }, cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>By the writing user, in one transaction committed only when the rows written are no more than the person saw.</remarks>
+    public async Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
+    {
+        if (source.Access.WriteUri is not { } uri)
+            return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
+
+        var kind = source.Source.Kind;
+        try
+        {
+            await using var connection = Connection(kind, uri, source.Source.Database);
+            await connection.OpenAsync(cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+
+            string name = Quoted(kind, await ResolvedAsync(connection, transaction, proposal.Collection, cancellationToken));
+            long written = 0;
+            foreach (var statement in SqlStatements.Write(kind, name, proposal))
+            {
+                await using var command = Bound(kind, connection, transaction, statement, 30);
+                written += await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            if (proposal.Operation is not WriteOperation.Insert && written > proposal.Matched)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Answer.Failed<long>(Messages.Changed(written, proposal.Matched));
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            return Answer.Ok(written);
+        }
+        catch (Exception exception) when (IsTimeout(exception))
+        {
+            return Answer.Failed<long>(Messages.TooSlow(30), Messages.TooSlowHint);
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException or ArgumentException or TimeoutException)
+        {
+            return Answer.Failed<long>(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)));
+        }
+    }
+
     /// <summary>The message of a failure without a password a connection string may carry.</summary>
     public static string Scrubbed(string message) => Password().Replace(MongoDocuments.Scrubbed(message), "Password=***");
 
@@ -127,10 +190,12 @@ public sealed partial class SqlTables : ITables
         _ => JsonValue.Create(Convert.ToString(value, CultureInfo.InvariantCulture))
     };
 
-    private static DbConnection Connection(ReachableSource source) => source.Source.Kind switch
+    private static DbConnection Connection(ReachableSource source) => Connection(source.Source.Kind, source.Access.ReadUri, source.Source.Database);
+
+    private static DbConnection Connection(SourceKind kind, string uri, string database) => kind switch
     {
-        SourceKind.PostgreSql => new NpgsqlConnection(new NpgsqlConnectionStringBuilder(source.Access.ReadUri) { Database = source.Source.Database, ApplicationName = "snail-mcp-connector" }.ConnectionString),
-        _ => new SqlConnection(new SqlConnectionStringBuilder(source.Access.ReadUri) { InitialCatalog = source.Source.Database, ApplicationName = "snail-mcp-connector" }.ConnectionString)
+        SourceKind.PostgreSql => new NpgsqlConnection(new NpgsqlConnectionStringBuilder(uri) { Database = database, ApplicationName = "snail-mcp-connector" }.ConnectionString),
+        _ => new SqlConnection(new SqlConnectionStringBuilder(uri) { InitialCatalog = database, ApplicationName = "snail-mcp-connector" }.ConnectionString)
     };
 
     /// <summary>A transaction the statement runs in and that is never committed; PostgreSQL's also refuses any write itself.</summary>
@@ -155,6 +220,37 @@ public sealed partial class SqlTables : ITables
 
         return command;
     }
+
+    /// <summary>A command of a statement the server wrote, its values bound; PostgreSQL takes text as untyped, so the column's type decides.</summary>
+    private static DbCommand Bound(SourceKind kind, DbConnection connection, DbTransaction transaction, SqlStatement statement, int seconds)
+    {
+        var command = Command(connection, transaction, statement.Text, seconds);
+        for (int index = 0; index < statement.Values.Count; index++)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = $"@p{index.ToString(CultureInfo.InvariantCulture)}";
+            parameter.Value = Plain(statement.Values[index]);
+            if (parameter is NpgsqlParameter untyped && IsText(statement.Values[index]))
+                untyped.NpgsqlDbType = NpgsqlDbType.Unknown;
+
+            command.Parameters.Add(parameter);
+        }
+
+        return command;
+    }
+
+    private static bool IsText(JsonNode? value) => value is null || value.GetValueKind() is JsonValueKind.String;
+
+    private static object Plain(JsonNode? value) => value?.GetValueKind() switch
+    {
+        null or JsonValueKind.Null => DBNull.Value,
+        JsonValueKind.String => value.GetValue<string>(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        _ when value.AsValue().TryGetValue(out long whole) => whole,
+        _ when value.AsValue().TryGetValue(out decimal number) => number,
+        _ => value.GetValue<double>()
+    };
 
     private static void Parameter(DbCommand command, string name, string value)
     {

@@ -25,7 +25,7 @@ database sees it. It then runs in a transaction that is always rolled back — o
 database refuses a write itself — with the query's seconds as its command timeout. On SQL Server the read-only user is
 the wall that counts: give it `db_datareader` and nothing else. `connector_schema` reads the columns from
 `information_schema`, three rows as examples, the planner's row estimate and the indexes; `connector_export` writes the
-rows of a `SELECT` as it does a collection's. Writes to SQL sources are not made yet: a proposal is refused.
+rows of a `SELECT` as it does a collection's.
 
 ```sql
 -- PostgreSQL
@@ -39,6 +39,12 @@ ALTER ROLE reader SET default_transaction_read_only = on;
 CREATE LOGIN reader WITH PASSWORD = '…';
 CREATE USER reader FOR LOGIN reader;
 ALTER ROLE db_datareader ADD MEMBER reader;
+
+-- the writing user, only when writes are wanted, and only on the tables an agent may change
+CREATE ROLE writer LOGIN PASSWORD '…';                                   -- PostgreSQL
+GRANT CONNECT ON DATABASE ledger TO writer;
+GRANT USAGE ON SCHEMA public TO writer;
+GRANT SELECT, INSERT, UPDATE, DELETE ON invoices, payments TO writer;
 ```
 
 ## Writes
@@ -49,7 +55,16 @@ documents it touches, three of them as they are — and keeps it in the data fol
 this server at `GET /proposals/{id}` and brings the decision to `POST /proposals/{id}/decision`, both with the
 `X-Approval-Key` header — a key the stand gives the dashboard and no agent. `connector_apply` then runs an allowed
 proposal once, as the writing user, for the task that proposed it, within 7 days. An update or a delete needs a filter;
-an update is field operators; one proposal touches at most 1000 documents. Without `APPROVAL_KEY` writes are off.
+an update is field operators; one proposal touches at most 1000 documents or rows. Without `APPROVAL_KEY` writes are
+off.
+
+A SQL table is written the same way, and no SQL an agent wrote is ever run: the filter is columns and values —
+`{"id": 42}`, or `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$null`, all of which must hold — an update is `$set`
+and `$inc`, an insert is an array of rows, and `update_one` needs a filter that matches exactly one row. The server
+writes the statement itself, every name checked and quoted and every value a parameter (PostgreSQL takes text untyped,
+so a date written as `"2026-06-01"` is read as the column's type). The dry run counts and shows the rows as the
+read-only user; the write runs as the writing user in one transaction, rolled back when it would touch more rows than
+the person allowed — the data changed since, and it has to be proposed again.
 
 ## Sources
 

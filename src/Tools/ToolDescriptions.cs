@@ -93,31 +93,35 @@ public static class ToolDescriptions
 
     /// <summary>The contract of connector_propose_write.</summary>
     public const string ProposeWrite =
-        $"""
-        Propose a change to a company database — {Operations} — when the task needs one. Nothing is written: the server
+        $$"""
+        Propose a change to a company database — {{Operations}} — when the task needs one. Nothing is written: the server
         dry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and
         answers a proposal id. Then call request_write_approval with server "connector" and that proposal: the task waits
         until the stand's owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming
-        the documents; an update is field operators such as $set; one proposal touches at most 1000 documents. The source
-        must have a writing user.
+        the documents; an update is field operators such as $set; one proposal touches at most 1000 documents or rows.
+        The source must have a writing user. On a SQL source the collection is the table, the filter is columns and
+        values — {"id": 42}, or comparisons $eq, $ne, $gt, $gte, $lt, $lte, $in and $null, all of which must hold — an
+        update is $set and $inc, an insert is an array of rows, and update_one needs a filter that matches exactly one
+        row; the server writes the statement itself.
         """;
 
     /// <summary>The contract of connector_apply.</summary>
     public const string Apply =
         """
-        Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents it
-        changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet, refused,
-        or already run is refused with what to do.
+        Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents or
+        rows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,
+        refused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would
+        touch more rows than the person allowed.
         """;
 
     /// <summary>The operation parameter.</summary>
     public const string Operation = $"What the write does: {Operations}.";
 
     /// <summary>The filter parameter of connector_propose_write.</summary>
-    public const string WriteFilter = """Which documents an update or a delete touches, such as {"number": "2026-0042"}; it may not be empty. Not used by an insert.""";
+    public const string WriteFilter = """Which documents or rows an update or a delete touches, such as {"number": "2026-0042"}, or on SQL {"id": 42, "due": {"$lt": "2026-06-01"}}; it may not be empty. Not used by an insert.""";
 
     /// <summary>The change parameter of connector_propose_write.</summary>
-    public const string Change = """For an update, the field operators, such as {"$set": {"status": "paid"}}; for an insert, a JSON array of the documents; not used by a delete.""";
+    public const string Change = """For an update, the field operators, such as {"$set": {"status": "paid"}} (on SQL only $set and $inc); for an insert, a JSON array of the documents or rows; not used by a delete.""";
 
     /// <summary>The reason parameter of connector_propose_write.</summary>
     public const string Reason = "Why the task needs this write, in one or two sentences for the person who decides.";

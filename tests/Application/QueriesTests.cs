@@ -99,7 +99,9 @@ public sealed class QueriesTests
 
         Assert.Single(queried.Value!.Rows);
         Assert.Equal(["SELECT count(*) FROM accounts"], _fakes.Tables.Asked);
-        Assert.Equal("query", Assert.Single(_fakes.Written.Records).Operation);
+        var record = Assert.Single(_fakes.Written.Records);
+        Assert.Equal("query", record.Operation);
+        Assert.Equal("accounts", record.Collection);
     }
 
     [Fact]

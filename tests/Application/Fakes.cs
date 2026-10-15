@@ -16,7 +16,8 @@ internal sealed class Fakes
     {
         ["sales"] = new(new Source("sales", SourceKind.MongoDb, "sales", ["orders", "customers"]), new SourceAccess("mongodb://reader@db/sales", null)),
         ["ledger"] = new(new Source("ledger", SourceKind.SqlServer, "ledger", [Source.Every]), new SourceAccess("Server=db;User=reader", null)),
-        ["crm"] = new(new Source("crm", SourceKind.MongoDb, "crm", ["deals"]) { CanWrite = true }, new SourceAccess("mongodb://reader@db/crm", "mongodb://writer@db/crm"))
+        ["crm"] = new(new Source("crm", SourceKind.MongoDb, "crm", ["deals"]) { CanWrite = true }, new SourceAccess("mongodb://reader@db/crm", "mongodb://writer@db/crm")),
+        ["erp"] = new(new Source("erp", SourceKind.PostgreSql, "erp", ["invoices"]) { CanWrite = true }, new SourceAccess("Host=db;Username=reader", "Host=db;Username=writer"))
     };
 
     public Proposals Kept { get; } = new();
@@ -32,7 +33,7 @@ internal sealed class Fakes
 
         var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
 
-        return new Writes(new SourceList(Sources), Database, Kept, Written, copy, clock ?? TimeProvider.System, options);
+        return new Writes(new SourceList(Sources), Database, Tables, Kept, Written, copy, clock ?? TimeProvider.System, options);
     }
 
     internal sealed class Proposals : IProposals
@@ -175,6 +176,24 @@ internal sealed class Fakes
             Asked.Add(select);
             await Task.Yield();
             yield return """{"n": 1}""";
+        }
+
+        public long Matched { get; set; } = 1;
+
+        public List<WriteProposal> WrittenProposals { get; } = [];
+
+        public Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string table, string filter, int sample, CancellationToken cancellationToken)
+        {
+            Asked.Add(filter);
+
+            return Task.FromResult(Answer.Ok(new WritePreview(Matched, ["""{"id": 7, "status": "open"}"""])));
+        }
+
+        public Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
+        {
+            WrittenProposals.Add(proposal);
+
+            return Task.FromResult(Answer.Ok(proposal.Matched));
         }
     }
 

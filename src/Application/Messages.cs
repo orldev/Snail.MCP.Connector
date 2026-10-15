@@ -27,8 +27,34 @@ public static class Messages
     /// <summary>A MongoDB source asked with SQL.</summary>
     public const string NotTables = "This source is a MongoDB database: read it with connector_find, connector_aggregate and connector_count; connector_query is for SQL sources.";
 
-    /// <summary>Writes to a SQL source.</summary>
-    public const string NoSqlWrites = "Writes to SQL sources are not proposed by this server yet; say in your answer what you would change.";
+    /// <summary>A SQL filter that is not columns and values.</summary>
+    public static string SqlFilterBad(string detail) => $"The filter cannot be read: {detail}.";
+
+    /// <summary>How a SQL filter is written.</summary>
+    public const string SqlFilterHint = "Name the rows by columns, such as {\"id\": 42} or {\"status\": \"open\", \"due\": {\"$lt\": \"2026-06-01\"}}: a value means equal; $eq, $ne, $gt, $gte, $lt, $lte, $in (a list) and $null (true or false) compare; every condition must hold.";
+
+    /// <summary>A column of a SQL update or insert that is not a plain name with a plain value.</summary>
+    public static string SqlColumnBad(string column) => $"\"{column}\" is not a column with a plain value: names are letters, digits and _, values are text, numbers, true, false or null.";
+
+    /// <summary>How a SQL update is written.</summary>
+    public const string SqlUpdateHint = "Write the update as {\"$set\": {\"status\": \"paid\"}} or {\"$inc\": {\"stock\": -1}}: $set gives columns values, $inc adds a number to numeric columns.";
+
+    /// <summary>How a SQL insert is written.</summary>
+    public const string SqlInsertHint = "Write the rows as a JSON array of objects, such as [{\"id\": 301, \"client_id\": 7, \"amount\": 120.5}].";
+
+    /// <summary>A table name that is not one or two plain names.</summary>
+    public static string SqlTableBad(string table) => $"\"{table}\" is not a table name: write it as name or schema.name, letters, digits and _.";
+
+    /// <summary>An update_one on SQL whose filter does not name exactly one row.</summary>
+    public static string NotOne(long matched) => $"update_one changes exactly one row, and the filter matches {matched}.";
+
+    /// <summary>What to do about it.</summary>
+    public const string NotOneHint = "Name the row by its key, such as {\"id\": 42}, or use update for every row the filter matches.";
+
+    /// <summary>A write that would touch more rows at apply than the person saw.</summary>
+    public static string Changed(long written, long matched) =>
+        $"The data changed since the proposal: the write would touch {written}, the person allowed {matched}. Nothing was written; propose it again.";
+
 
     /// <summary>A statement that is not a SELECT.</summary>
     public const string NotASelect = "The statement is not a SELECT: this server runs one SELECT, or a WITH that ends in one.";
@@ -132,7 +158,7 @@ public static class Messages
         operation is null ? "The update changes nothing." : $"{operation} is not an update operator a proposal may use.";
 
     /// <summary>A write larger than one proposal may be.</summary>
-    public static string TooMany(long count, int most) => $"The write would touch {count} documents; one proposal touches at most {most}.";
+    public static string TooMany(long count, int most) => $"The write would touch {count} documents or rows; one proposal touches at most {most}.";
 
     /// <summary>A source of that name is not declared.</summary>
     public static string NoSource(string name) => $"No source is called \"{name}\".";

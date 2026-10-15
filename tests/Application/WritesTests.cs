@@ -67,11 +67,64 @@ public sealed class WritesTests
     }
 
     [Fact]
-    public async Task ProposeAsync_SqlSource_IsRefusedForNow()
+    public async Task ProposeAsync_SqlUpdate_DryRunsByColumnsAndKeepsIt()
     {
-        var proposed = await _fakes.Writes().ProposeAsync("ledger", "accounts", "update", """{"id": 1}""", """{"$set": {"x": 1}}""", "fix", CancellationToken.None);
+        var proposed = await _fakes.Writes().ProposeAsync("erp", "invoices", "update", """{"id": 7}""", """{"$set": {"status": "paid"}}""", "paid on the 3rd", CancellationToken.None);
 
-        Assert.Equal(Messages.NoSqlWrites, proposed.Error);
+        Assert.Equal(1, proposed.Value!.Matched);
+        Assert.Equal("""{"id":7}""", Assert.Single(_fakes.Tables.Asked));
+        Assert.Empty(_fakes.Tables.WrittenProposals);
+        Assert.Single(_fakes.Kept.All);
+    }
+
+    [Theory]
+    [InlineData("""{"id": {"$regex": "7"}}""", """{"$set": {"status": "paid"}}""")]
+    [InlineData("""{"id; drop table x": 7}""", """{"$set": {"status": "paid"}}""")]
+    [InlineData("""{}""", """{"$set": {"status": "paid"}}""")]
+    [InlineData("""{"id": 7}""", """{"$unset": {"status": ""}}""")]
+    [InlineData("""{"id": 7}""", """{"$inc": {"amount": "10"}}""")]
+    [InlineData("""{"id": 7}""", """{"$set": {"status": {"nested": true}}}""")]
+    public async Task ProposeAsync_SqlWriteThatIsNotColumnsAndValues_IsRefusedBeforeTheDatabase(string filter, string change)
+    {
+        var proposed = await _fakes.Writes().ProposeAsync("erp", "invoices", "update", filter, change, "fix", CancellationToken.None);
+
+        Assert.NotNull(proposed.Error);
+        Assert.Empty(_fakes.Tables.Asked);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_SqlUpdateOneMatchingSeveral_AsksForTheKey()
+    {
+        _fakes.Tables.Matched = 4;
+
+        var proposed = await _fakes.Writes().ProposeAsync("erp", "invoices", "update_one", """{"status": "open"}""", """{"$set": {"status": "paid"}}""", "fix", CancellationToken.None);
+
+        Assert.Equal(Messages.NotOne(4), proposed.Error);
+        Assert.Equal(Messages.NotOneHint, proposed.Hint);
+    }
+
+    [Theory]
+    [InlineData("salaries")]
+    [InlineData("invoices; DROP TABLE invoices")]
+    public async Task ProposeAsync_TableTheSourceKeepsOrNoName_IsRefused(string table)
+    {
+        var proposed = await _fakes.Writes().ProposeAsync("erp", table, "delete", """{"id": 7}""", null, "fix", CancellationToken.None);
+
+        Assert.NotNull(proposed.Error);
+        Assert.Empty(_fakes.Tables.Asked);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_AllowedSqlWrite_RunsThroughTheTables()
+    {
+        var proposal = (await _fakes.Writes().ProposeAsync("erp", "invoices", "delete", """{"id": 7}""", null, "duplicate", CancellationToken.None)).Value!;
+        await _fakes.Writes().DecideAsync(proposal.Id, Key, isAllowed: true, "owner", null, CancellationToken.None);
+
+        var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
+
+        Assert.Equal(1, applied.Value!.Written);
+        Assert.Equal(WriteOperation.Delete, Assert.Single(_fakes.Tables.WrittenProposals).Operation);
+        Assert.Empty(_fakes.Database.WrittenProposals);
     }
 
     [Fact]

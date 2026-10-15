@@ -6,7 +6,7 @@ using Snail.MCP.Connector.Configuration;
 
 namespace Snail.MCP.Connector.Application;
 
-/// <summary>Writes to a company database: proposed by an agent, decided by a person on the stand, run once by the writing user.</summary>
+/// <summary>Writes to a company database — a MongoDB collection or a SQL table: proposed by an agent, decided by a person on the stand, run once by the writing user.</summary>
 /// <remarks>
 /// The owner's decision of 15.10.2026. A proposal is dry-run by the read-only user — how many documents it matches, a few
 /// of them as they are — and kept here, so the person reads what will run and not the agent's account of it. The decision
@@ -16,6 +16,7 @@ namespace Snail.MCP.Connector.Application;
 public sealed class Writes(
     ISources sources,
     IDocuments documents,
+    ITables tables,
     IProposals proposals,
     IQueryJournal journal,
     SessionCopy copy,
@@ -39,7 +40,9 @@ public sealed class Writes(
         if (kind.Error is not null)
             return Answer.Failed<WriteProposal>(kind.Error);
 
-        var shaped = await ShapeAsync(reached, collection, kind.Value, filter, change, cancellationToken);
+        var shaped = reached.Source.Source.Kind is SourceKind.MongoDb
+            ? await ShapeAsync(reached, collection, kind.Value, filter, change, cancellationToken)
+            : await ShapeTableAsync(reached, collection, kind.Value, filter, change, cancellationToken);
         if (shaped.Value is not { } proposal)
             return shaped;
 
@@ -70,7 +73,9 @@ public sealed class Writes(
         if (found.Value is not { } source)
             return Answer.Failed<WriteProposal>(found.Error!, found.Hint);
 
-        var written = await documents.WriteAsync(source, proposal, cancellationToken);
+        var written = source.Source.Kind is SourceKind.MongoDb
+            ? await documents.WriteAsync(source, proposal, cancellationToken)
+            : await tables.WriteAsync(source, proposal, cancellationToken);
         await RecordAsync(proposal, "apply", written.Value, written.Error, cancellationToken);
         if (written.Error is not null)
             return Answer.Failed<WriteProposal>(written.Error, written.Hint);
@@ -143,6 +148,39 @@ public sealed class Writes(
         return Answer.Ok(Proposal(reached, collection, operation, where.ToJsonString(), set.ToJsonString(), touched, preview.Sample));
     }
 
+    /// <summary>A write to a table: columns and values checked here, the statement written by the adapter, the rows counted by the reader.</summary>
+    private async Task<Answer<WriteProposal>> ShapeTableAsync(WriteContext reached, string table, WriteOperation operation, string? filter, string? change, CancellationToken cancellationToken)
+    {
+        if (operation is WriteOperation.Insert)
+        {
+            var inserted = SqlWriteRules.Rows(change, options.Value.MostWritten);
+            if (inserted.Value is not { } added)
+                return Answer.Failed<WriteProposal>(inserted.Error!, inserted.Hint);
+
+            return Answer.Ok(Proposal(reached, table, operation, "{}", added.ToJsonString(), added.Count, []));
+        }
+
+        var narrowed = SqlWriteRules.Filter(filter);
+        if (narrowed.Value is not { } where)
+            return Answer.Failed<WriteProposal>(narrowed.Error!, narrowed.Hint);
+
+        var update = operation is WriteOperation.Delete ? Answer.Ok(new JsonObject()) : SqlWriteRules.Update(change);
+        if (update.Value is not { } set)
+            return Answer.Failed<WriteProposal>(update.Error!, update.Hint);
+
+        var previewed = await tables.PreviewAsync(reached.Source, table, where.ToJsonString(), options.Value.ProposalSample, cancellationToken);
+        if (previewed.Value is not { } preview)
+            return Answer.Failed<WriteProposal>(previewed.Error!, previewed.Hint);
+
+        if (operation is WriteOperation.UpdateOne && preview.Matched != 1)
+            return Answer.Failed<WriteProposal>(Messages.NotOne(preview.Matched), Messages.NotOneHint);
+
+        if (preview.Matched > options.Value.MostWritten)
+            return Answer.Failed<WriteProposal>(Messages.TooMany(preview.Matched, options.Value.MostWritten), Messages.TooManyHint);
+
+        return Answer.Ok(Proposal(reached, table, operation, where.ToJsonString(), set.ToJsonString(), preview.Matched, preview.Sample));
+    }
+
     private WriteProposal Proposal(WriteContext reached, string collection, WriteOperation operation, string filter, string change, long matched, IReadOnlyList<string> sample) => new()
     {
         Id = $"w{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8))}",
@@ -168,10 +206,11 @@ public sealed class Writes(
         if (found.Value is not { } source)
             return Answer.Failed<WriteContext>(found.Error!, found.Hint);
 
-        if (source.Source.Kind is not SourceKind.MongoDb)
-            return Answer.Failed<WriteContext>(Messages.NoSqlWrites);
+        if (source.Source.Kind is not SourceKind.MongoDb && !SqlWriteRules.IsTable(collection))
+            return Answer.Failed<WriteContext>(Messages.SqlTableBad(collection), Messages.CollectionsHint(source.Source));
 
-        if (!source.Source.Allows(collection))
+        bool isAllowed = source.Source.Kind is SourceKind.MongoDb ? source.Source.Allows(collection) : SqlRules.IsAllowed(source.Source, collection);
+        if (!isAllowed)
             return Answer.Failed<WriteContext>(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source));
 
         return Answer.Ok(new WriteContext(source, current));

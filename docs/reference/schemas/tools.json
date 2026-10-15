@@ -306,7 +306,7 @@
   },
   {
     "name": "connector_propose_write",
-    "description": "Propose a change to a company database \u2014 update, update_one, insert or delete \u2014 when the task needs one. Nothing is written: the server\ndry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and\nanswers a proposal id. Then call request_write_approval with server \u0022connector\u0022 and that proposal: the task waits\nuntil the stand\u0027s owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming\nthe documents; an update is field operators such as $set; one proposal touches at most 1000 documents. The source\nmust have a writing user.",
+    "description": "Propose a change to a company database \u2014 update, update_one, insert or delete \u2014 when the task needs one. Nothing is written: the server\ndry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and\nanswers a proposal id. Then call request_write_approval with server \u0022connector\u0022 and that proposal: the task waits\nuntil the stand\u0027s owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming\nthe documents; an update is field operators such as $set; one proposal touches at most 1000 documents or rows.\nThe source must have a writing user. On a SQL source the collection is the table, the filter is columns and\nvalues \u2014 {\u0022id\u0022: 42}, or comparisons $eq, $ne, $gt, $gte, $lt, $lte, $in and $null, all of which must hold \u2014 an\nupdate is $set and $inc, an insert is an array of rows, and update_one needs a filter that matches exactly one\nrow; the server writes the statement itself.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -327,7 +327,7 @@
           "type": "string"
         },
         "filter": {
-          "description": "Which documents an update or a delete touches, such as {\u0022number\u0022: \u00222026-0042\u0022}; it may not be empty. Not used by an insert.",
+          "description": "Which documents or rows an update or a delete touches, such as {\u0022number\u0022: \u00222026-0042\u0022}, or on SQL {\u0022id\u0022: 42, \u0022due\u0022: {\u0022$lt\u0022: \u00222026-06-01\u0022}}; it may not be empty. Not used by an insert.",
           "type": [
             "string",
             "null"
@@ -335,7 +335,7 @@
           "default": null
         },
         "change": {
-          "description": "For an update, the field operators, such as {\u0022$set\u0022: {\u0022status\u0022: \u0022paid\u0022}}; for an insert, a JSON array of the documents; not used by a delete.",
+          "description": "For an update, the field operators, such as {\u0022$set\u0022: {\u0022status\u0022: \u0022paid\u0022}} (on SQL only $set and $inc); for an insert, a JSON array of the documents or rows; not used by a delete.",
           "type": [
             "string",
             "null"
@@ -360,7 +360,7 @@
   },
   {
     "name": "connector_apply",
-    "description": "Run a proposal the stand\u0027s owner allowed, once, as the source\u0027s writing user, and get back how many documents it\nchanged. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet, refused,\nor already run is refused with what to do.",
+    "description": "Run a proposal the stand\u0027s owner allowed, once, as the source\u0027s writing user, and get back how many documents or\nrows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,\nrefused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would\ntouch more rows than the person allowed.",
     "inputSchema": {
       "type": "object",
       "properties": {

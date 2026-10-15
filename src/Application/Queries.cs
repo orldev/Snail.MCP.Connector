@@ -50,7 +50,9 @@ public sealed partial class Queries(
         if (reached.Value is not { } context)
             return Answer.Failed<CollectionShape>(reached.Error!, reached.Hint);
 
-        return await RecordedAsync(context, collection, "schema", $$"""{"sample":{{options.Value.Sample}}}""",
+        string recorded = context.Source.Source.Kind is SourceKind.MongoDb ? $$"""{"sample":{{options.Value.Sample}}}""" : "{}";
+
+        return await RecordedAsync(context, collection, "schema", recorded,
             () => context.Source.Source.Kind is SourceKind.MongoDb
                 ? documents.ShapeAsync(context.Source, collection, options.Value.Sample, cancellationToken)
                 : tables.ShapeAsync(context.Source, collection, cancellationToken),
@@ -68,7 +70,7 @@ public sealed partial class Queries(
         if (checkedSelect.Value is not { } statement)
             return Answer.Failed<RowPage>(checkedSelect.Error!, checkedSelect.Hint);
 
-        return await RecordedAsync(context, Source.Every, "query", statement, () => tables.QueryAsync(context.Source, statement, Limit(limit), cancellationToken), page => page.Rows.Count, cancellationToken);
+        return await RecordedAsync(context, Journaled(statement), "query", statement, () => tables.QueryAsync(context.Source, statement, Limit(limit), cancellationToken), page => page.Rows.Count, cancellationToken);
     }
 
     /// <summary>The documents a filter matches.</summary>
@@ -168,9 +170,13 @@ public sealed partial class Queries(
         string recorded = new JsonObject { ["select"] = statement, ["file"] = name }.ToJsonString();
         var rows = tables.StreamAsync(context.Source, statement, options.Value.MostExportRows, cancellationToken);
 
-        return await RecordedAsync(context, Source.Every, "export", recorded,
+        return await RecordedAsync(context, Journaled(statement), "export", recorded,
             () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, cancellationToken), exported => exported.Rows, cancellationToken);
     }
+
+    /// <summary>The tables a SELECT reads, as the journal's collection; <c>*</c> when it names none.</summary>
+    private static string Journaled(string statement) =>
+        SqlRules.Read(statement) is { Count: > 0 } read ? string.Join(", ", read) : Source.Every;
 
     /// <summary>The newest queries of this session's task, for an agent to see what it already asked.</summary>
     public async Task<Answer<IReadOnlyList<QueryRecord>>> JournalAsync(int most, CancellationToken cancellationToken)

@@ -16,6 +16,9 @@ public abstract class SqlFixture : IAsyncLifetime
     /// <summary>A source of the ledger as the connector reaches it.</summary>
     public ReachableSource Source { get; private set; } = default!;
 
+    /// <summary>The same source with a writing user — the server's own, as the tests have no other.</summary>
+    public ReachableSource Writable => Source with { Access = Source.Access with { WriteUri = Source.Access.ReadUri } };
+
     /// <summary>The engine.</summary>
     protected abstract SourceKind Kind { get; }
 
@@ -122,6 +125,27 @@ public abstract class SqlTablesTests(SqlFixture database)
     /// <summary>A statement that waits five seconds, in the engine's dialect.</summary>
     protected abstract string Slow { get; }
 
+    private static WriteProposal Proposal(WriteOperation operation, string filter, string change, long matched) => new()
+    {
+        Id = "w1",
+        Task = "t",
+        Source = "ledger",
+        Collection = "orders",
+        Operation = operation,
+        Filter = filter,
+        Change = change,
+        Reason = "test",
+        Matched = matched,
+        At = DateTimeOffset.UnixEpoch
+    };
+
+    private async Task<long> CountAsync(string select)
+    {
+        var page = (await _tables.QueryAsync(database.Source, select, Page, CancellationToken.None)).Value!;
+
+        return System.Text.Json.Nodes.JsonNode.Parse(page.Rows[0])!["n"]!.GetValue<long>();
+    }
+
     [Fact]
     public async Task TablesAsync_Ledger_ListsOrdersWithItsSchema()
     {
@@ -185,6 +209,65 @@ public abstract class SqlTablesTests(SqlFixture database)
 
         Assert.StartsWith(Messages.DatabaseSaid("ledger", string.Empty), page.Error, StringComparison.Ordinal);
         Assert.DoesNotContain("Password=", page.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ColumnsAndComparisons_CountsAndShowsTheRows()
+    {
+        var preview = (await _tables.PreviewAsync(database.Source, "orders", """{"city": "Madrid", "number": {"$lte": 10}}""", 3, CancellationToken.None)).Value!;
+
+        Assert.Equal(5, preview.Matched);
+        Assert.Equal(3, preview.Sample.Count);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_DateAsText_IsReadAsTheColumnsType()
+    {
+        var preview = (await _tables.PreviewAsync(database.Source, "orders", """{"at": {"$gte": "2026-10-20"}}""", 3, CancellationToken.None)).Value!;
+
+        Assert.Equal(9, preview.Matched);
+    }
+
+    [Fact]
+    public async Task WriteAsync_UpdateOfWhatWasMatched_IsCommitted()
+    {
+        var written = await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.UpdateOne, """{"number": 1}""", """{"$set": {"city": "Lugo"}, "$inc": {"total": 1}}""", 1), CancellationToken.None);
+        long lugo = await CountAsync("SELECT COUNT(*) AS n FROM orders WHERE city = 'Lugo' AND total = 11.50");
+        await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.Update, """{"number": 1}""", """{"$set": {"city": "Valencia"}, "$inc": {"total": -1}}""", 1), CancellationToken.None);
+
+        Assert.Equal(1, written.Value);
+        Assert.Equal(1, lugo);
+    }
+
+    /// <summary>The data grew past what the person read: nothing is written.</summary>
+    [Fact]
+    public async Task WriteAsync_MoreRowsThanMatched_IsRolledBack()
+    {
+        var written = await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.Update, """{"city": "Madrid"}""", """{"$set": {"city": "Zaragoza"}}""", 1), CancellationToken.None);
+
+        Assert.Equal(Messages.Changed(15, 1), written.Error);
+        Assert.Equal(0, await CountAsync("SELECT COUNT(*) AS n FROM orders WHERE city = 'Zaragoza'"));
+    }
+
+    [Fact]
+    public async Task WriteAsync_InsertThenDelete_AddsAndRemovesTheRow()
+    {
+        var inserted = await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.Insert, "{}", """[{"number": 31, "city": "Lugo", "total": 1.5, "paid": true, "at": "2026-10-31T00:00:00"}]""", 1), CancellationToken.None);
+        long added = await CountAsync("SELECT COUNT(*) AS n FROM orders WHERE number = 31");
+        var deleted = await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.Delete, """{"number": 31}""", "{}", 1), CancellationToken.None);
+
+        Assert.Equal(1, inserted.Value);
+        Assert.Equal(1, added);
+        Assert.Equal(1, deleted.Value);
+        Assert.Equal(30, await CountAsync("SELECT COUNT(*) AS n FROM orders"));
+    }
+
+    [Fact]
+    public async Task WriteAsync_SourceWithoutAWriter_IsRefused()
+    {
+        var written = await _tables.WriteAsync(database.Source, Proposal(WriteOperation.Delete, """{"number": 1}""", "{}", 1), CancellationToken.None);
+
+        Assert.Equal(Messages.NoWriter, written.Error);
     }
 
     [Fact]
