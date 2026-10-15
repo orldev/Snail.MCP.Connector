@@ -2,7 +2,7 @@
 
 ## <code>connector_<wbr>diagnose</code>
 
-Say what state this server is in: its name, its version and the runtime it runs on. Changes nothing.
+Say whether the server can reach the stand's sources: its version, Vault, and how many sources are declared. Changes nothing.
 
 *read-only · repeat-safe · stays on this machine.*
 

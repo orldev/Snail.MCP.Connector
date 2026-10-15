@@ -1,5 +1,6 @@
 {
   "families": [
+    { "type": "ConnectorTools", "slug": "databases", "title": "Databases" },
     { "type": "DiagnosticsTools", "slug": "diagnostics", "title": "Diagnostics" }
   ]
 }

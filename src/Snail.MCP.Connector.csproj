@@ -1,18 +1,26 @@
-<Project Sdk="Snail.Sdk.Mcp">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <Sdk Name="Snail.Sdk.Mcp" />
+
+  <!--
+    Framework-dependent and HTTP only (Snail.Sdk.Mcp): the server runs in its own container on the stand, inside the
+    company's network where its databases are, and answers the workers of the platform at its port.
+  -->
   <PropertyGroup>
     <SnailMcpNative>false</SnailMcpNative>
     <SnailMcpTransport>Http</SnailMcpTransport>
     <SnailMcpContainer>true</SnailMcpContainer>
     <Version>0.1.0</Version>
-    <Description>Company databases for the platform's agents: MongoDB, SQL Server and PostgreSQL, read by a read-only user, written only after a human's approval.</Description>
-    <PackageTags>mcp;mcp-server;modelcontextprotocol;ai</PackageTags>
+    <Description>Company databases for agents: MongoDB, SQL Server, PostgreSQL; read-only, writes on approval.</Description>
+    <PackageTags>mcp;mcp-server;modelcontextprotocol;ai;mongodb;database</PackageTags>
     <RepositoryUrl>https://github.com/orldev/Snail.MCP.Connector</RepositoryUrl>
     <PackageProjectUrl>https://github.com/orldev/Snail.MCP.Connector</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>
 
   <ItemGroup>

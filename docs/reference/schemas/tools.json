@@ -1,7 +1,265 @@
 [
   {
+    "name": "connector_sources",
+    "description": "List the company databases declared on the stand: each source\u0027s name, engine (mongodb, sqlserver or postgresql), database, the collections\nan agent may read and what a person wrote about it. Start here, then read a source\u0027s shape with connector_schema.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_schema",
+    "description": "Read what a source holds before querying it. Without a collection: the collections an agent may read. With one:\nits fields read from a sample of 200 documents \u2014 each field\u0027s dotted path, its types, how often it is present and\nan example value \u2014 the documents it holds and its indexes, which are what a filter is quick on.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection whose fields to read; without one, the collections an agent may read.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_find",
+    "description": "Read documents of a collection that match a filter, with the fields and order asked for. Write the filter,\nprojection and sort as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}. An answer carries 50 documents unless asked for more, at most 200, and at\nmost 65536 bytes of them; when it was cut it says so \u2014 narrow the filter or count first. A query gets 30 seconds.\nOnly reads: operators that write or run code are refused.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection, as connector_schema lists it.",
+          "type": "string"
+        },
+        "filter": {
+          "description": "Which documents, as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}; empty matches every one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "projection": {
+          "description": "Which fields to return, such as {\u0022number\u0022: 1, \u0022total\u0022: 1, \u0022_id\u0022: 0}; empty returns them all.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "sort": {
+          "description": "The order, such as {\u0022date\u0022: -1}; empty leaves the database\u0027s order.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "How many rows to return: 50 when not given, at most 200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "collection"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_aggregate",
+    "description": "Run a MongoDB aggregation pipeline on a collection to group, sum, count and join \u2014 the way to analyse rather than\nlist. Write the pipeline as a JSON array of stages in MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}. $lookup, $graphLookup and $unionWith may\nread only collections the source allows; $out, $merge, $function, $accumulator and $where are refused. The answer\ncarries 50 rows unless asked for more, at most 200, at most 65536 bytes; a query gets 30 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection, as connector_schema lists it.",
+          "type": "string"
+        },
+        "pipeline": {
+          "description": "The stages as a JSON array, such as [{\u0022$match\u0022: {\u0022status\u0022: \u0022paid\u0022}}, {\u0022$group\u0022: {\u0022_id\u0022: \u0022$customer\u0022, \u0022total\u0022: {\u0022$sum\u0022: \u0022$total\u0022}}}].",
+          "type": "string"
+        },
+        "limit": {
+          "description": "How many rows to return: 50 when not given, at most 200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "collection",
+        "pipeline"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_count",
+    "description": "Count the documents of a collection that match a filter, written as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}; an empty filter counts them\nall. Cheaper than reading them: count before reading a large collection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection, as connector_schema lists it.",
+          "type": "string"
+        },
+        "filter": {
+          "description": "Which documents, as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}; empty matches every one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "collection"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_export",
+    "description": "Write the documents of a filter, or the rows of a pipeline, into a csv or xlsx file of the task, under exports/ of\nthe working copy, so a person gets the data as a table. Give either a filter or a pipeline. Nested fields become\ncolumns of their dotted paths. An export writes at most 100000 rows and says when it stopped there.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "description": "The source\u0027s name, as connector_sources lists it.",
+          "type": "string"
+        },
+        "collection": {
+          "description": "The collection, as connector_schema lists it.",
+          "type": "string"
+        },
+        "format": {
+          "description": "The file\u0027s format: csv or xlsx.",
+          "type": "string"
+        },
+        "file": {
+          "description": "The file\u0027s name, letters, digits, dots, dashes and underscores; the format\u0027s extension is added when missing.",
+          "type": "string"
+        },
+        "filter": {
+          "description": "Which documents, as MongoDB Extended JSON, such as {\u0022status\u0022: \u0022paid\u0022, \u0022total\u0022: {\u0022$gt\u0022: 100}}; dates as {\u0022$date\u0022: \u00222026-01-31T00:00:00Z\u0022}, ids as {\u0022$oid\u0022: \u0022\u2026\u0022}; empty matches every one.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "pipeline": {
+          "description": "The stages as a JSON array, when the rows come from a pipeline rather than a filter.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source",
+        "collection",
+        "format",
+        "file"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "connector_journal",
+    "description": "Read the queries this task already made \u2014 which source and collection, what was asked, how many rows came back,\nwhether it failed \u2014 newest first, so a query is not repeated. Every query is written there, for the company to see.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "most": {
+          "description": "How many queries to return, newest first: at most 200.",
+          "type": "integer",
+          "default": 20
+        }
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
     "name": "connector_diagnose",
-    "description": "Say what state this server is in: its name, its version and the runtime it runs on. Changes nothing.",
+    "description": "Say whether the server can reach the stand\u0027s sources: its version, Vault, and how many sources are declared. Changes nothing.",
     "inputSchema": {
       "type": "object",
       "properties": {}

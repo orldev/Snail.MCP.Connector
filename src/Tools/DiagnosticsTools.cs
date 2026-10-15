@@ -1,28 +1,34 @@
 using System.ComponentModel;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Snail.MCP.Connector.Application.Ports;
+using Snail.MCP.Connector.Configuration;
 
 namespace Snail.MCP.Connector.Tools;
 
-/// <summary>The state of the server: the sample tool a new server starts from.</summary>
+/// <summary>Whether the server can reach the stand's sources.</summary>
 [McpServerToolType]
-public sealed class DiagnosticsTools
+public sealed class DiagnosticsTools(ISources sources, IOptions<ConnectorOptions> options)
 {
-    /// <summary>Reports the server's name, version and runtime.</summary>
+    /// <summary>Says whether the sources can be read.</summary>
     [McpServerTool(Name = "connector_diagnose", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Say what state this server is in: its name, its version and the runtime it runs on. Changes nothing.")]
-    public static CallToolResult Diagnose()
+    [Description(ToolDescriptions.Diagnose)]
+    public async Task<CallToolResult> DiagnoseAsync(CancellationToken cancellationToken = default)
     {
-        var assembly = typeof(DiagnosticsTools).Assembly.GetName();
+        var listed = await sources.ListAsync(cancellationToken);
+        var settings = options.Value;
         var state = new JsonObject
         {
-            ["ok"] = true,
-            ["server"] = assembly.Name,
-            ["version"] = assembly.Version?.ToString(3),
-            ["runtime"] = Environment.Version.ToString()
+            ["server"] = typeof(DiagnosticsTools).Assembly.GetName().Version?.ToString(3),
+            ["vault"] = string.IsNullOrWhiteSpace(settings.VaultAddress) ? null : settings.VaultAddress,
+            ["sources"] = listed.Value?.Count ?? 0,
+            ["note"] = listed.Error,
+            ["mostRows"] = settings.MostRows,
+            ["querySeconds"] = settings.QuerySeconds
         };
 
-        return new CallToolResult { Content = [new TextContentBlock { Text = state.ToJsonString() }] };
+        return ToolResponse.Success(state);
     }
 }

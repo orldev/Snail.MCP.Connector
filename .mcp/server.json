@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.orldev/snail-mcp-connector",
-  "description": "Company databases for the platform's agents: MongoDB, SQL Server and PostgreSQL, read by a read-only user, written only after a human's approval.",
+  "description": "Company databases for agents: MongoDB, SQL Server, PostgreSQL; read-only, writes on approval.",
   "version": "0.1.0",
   "packages": [
     {
