@@ -39,6 +39,13 @@ public sealed class SqlRulesTests
     [Theory]
     [InlineData("SELECT * FROM salaries")]
     [InlineData("SELECT * FROM orders o JOIN hr.salaries s ON s.id = o.id")]
+    [InlineData("SELECT * FROM orders o, salaries s")]
+    [InlineData("SELECT * FROM orders AS o, customers c, hr.salaries")]
+    [InlineData("SELECT * FROM (SELECT 1 AS n) t, salaries")]
+    [InlineData("SELECT * FROM orders o CROSS APPLY salaries s")]
+    [InlineData("SELECT * FROM orders o, LATERAL (SELECT * FROM salaries) s")]
+    [InlineData("SELECT * FROM orders WHERE id IN (SELECT id FROM salaries)")]
+    [InlineData("SELECT * FROM salaries_by_month()")]
     public void Select_TableTheSourceKeeps_IsRefusedNamingIt(string statement)
     {
         var checkedSelect = SqlRules.Select(statement, Ledger);
@@ -96,4 +103,24 @@ public sealed class SqlRulesTests
     [InlineData("\"invoices\"", false)]
     public void IsTable_OneOrTwoPlainNames(string table, bool isTable) =>
         Assert.Equal(isTable, SqlWriteRules.IsTable(table));
+
+    /// <summary>FROM inside EXTRACT, SUBSTRING or TRIM names no table: such a query reads only what it reads.</summary>
+    [Theory]
+    [InlineData("SELECT EXTRACT(year FROM o.issued) AS y, count(*) FROM orders o GROUP BY 1")]
+    [InlineData("SELECT SUBSTRING(name FROM 1 FOR 3) FROM customers")]
+    [InlineData("SELECT TRIM(BOTH ' ' FROM name) FROM customers")]
+    public void Select_FunctionThatSpellsFrom_IsAccepted(string statement) =>
+        Assert.NotNull(SqlRules.Select(statement, Ledger).Value);
+
+    [Fact]
+    public void Read_FromList_NamesEveryTable() =>
+        Assert.Equal(["orders", "customers"], SqlRules.Read("SELECT * FROM orders o, customers AS c WHERE o.c = c.id"));
+
+    /// <summary>SQL Server keeps a table's case as written; the statement and the allowed list may differ in it.</summary>
+    [Theory]
+    [InlineData("SELECT * FROM Orders")]
+    [InlineData("SELECT * FROM dbo.ORDERS")]
+    [InlineData("SELECT * FROM [Orders]")]
+    public void Select_TableInAnotherCase_IsAccepted(string statement) =>
+        Assert.NotNull(SqlRules.Select(statement, Ledger with { Collections = ["Orders"] }).Value);
 }

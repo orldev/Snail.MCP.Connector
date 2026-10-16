@@ -39,7 +39,7 @@ public static class QueryRules
         if (Refused(stages) is { } refused)
             return Answer.Failed<JsonArray>(refused, Messages.ReadOnlyHint);
 
-        IReadOnlyList<string> joined = [.. stages.OfType<JsonObject>().SelectMany(Joined)];
+        IReadOnlyList<string> joined = [.. Joined(stages)];
         string? kept = joined.FirstOrDefault(collection => !source.Allows(collection));
 
         return kept is null ? Answer.Ok(stages) : Answer.Failed<JsonArray>(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source));
@@ -53,26 +53,49 @@ public static class QueryRules
         _ => null
     };
 
-    /// <summary>The collections a stage reads besides the one the pipeline runs on, its own sub-pipelines included.</summary>
-    private static IEnumerable<string> Joined(JsonObject stage)
+    /// <summary>The collections a node reads besides the one the pipeline runs on, at any depth.</summary>
+    /// <remarks>
+    /// The whole stage is walked, not its top: a join inside <c>$facet</c>, inside another join's pipeline or anywhere else
+    /// a sub-pipeline can stand names its collection too. A join into another database — <c>from</c> written as an
+    /// object — is answered by its JSON, which no source allows, so it is refused by name.
+    /// </remarks>
+    private static IEnumerable<string> Joined(JsonNode? node)
     {
-        foreach (var pair in stage)
+        if (node is JsonArray items)
         {
-            if (!Joining.Contains(pair.Key, StringComparer.Ordinal))
-                continue;
+            foreach (var inner in items.SelectMany(Joined))
+                yield return inner;
 
-            if (pair.Value is JsonValue single && single.TryGetValue(out string? collection))
-                yield return collection;
+            yield break;
+        }
 
-            if (pair.Value is not JsonObject join)
-                continue;
+        if (node is not JsonObject document)
+            yield break;
 
-            if ((join["from"] ?? join["coll"]) is { } from && from.GetValueKind() is JsonValueKind.String)
-                yield return from.GetValue<string>();
+        foreach (var pair in document)
+        {
+            if (Joining.Contains(pair.Key, StringComparer.Ordinal))
+            {
+                foreach (var collection in Collections(pair.Value))
+                    yield return collection;
+            }
 
-            foreach (var inner in (join["pipeline"] as JsonArray ?? []).OfType<JsonObject>().SelectMany(Joined))
+            foreach (var inner in Joined(pair.Value))
                 yield return inner;
         }
+    }
+
+    /// <summary>The collection a joining stage names: its value when it is one name, its from or coll otherwise.</summary>
+    private static IEnumerable<string> Collections(JsonNode? join)
+    {
+        if (join is JsonValue single && single.TryGetValue(out string? collection))
+            yield return collection;
+
+        if (join is not JsonObject stage)
+            yield break;
+
+        if ((stage["from"] ?? stage["coll"]) is { } from)
+            yield return from.GetValueKind() is JsonValueKind.String ? from.GetValue<string>() : from.ToJsonString();
     }
 
     private static JsonNode? Parsed(string text)

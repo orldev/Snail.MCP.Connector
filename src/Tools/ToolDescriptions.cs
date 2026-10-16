@@ -97,7 +97,7 @@ public static class ToolDescriptions
         Propose a change to a company database — {{Operations}} — when the task needs one. Nothing is written: the server
         dry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and
         answers a proposal id. Then call request_write_approval with server "connector" and that proposal: the task waits
-        until the stand's owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming
+        until the stand's owner or an administrator reads the proposal and allows or refuses it. An update or a delete needs a filter naming
         the documents; an update is field operators such as $set; one proposal touches at most 1000 documents or rows.
         The source must have a writing user. On a SQL source the collection is the table, the filter is columns and
         values — {"id": 42}, or comparisons $eq, $ne, $gt, $gte, $lt, $lte, $in and $null, all of which must hold — an
@@ -108,7 +108,7 @@ public static class ToolDescriptions
     /// <summary>The contract of connector_apply.</summary>
     public const string Apply =
         """
-        Run a proposal the stand's owner allowed, once, as the source's writing user, and get back how many documents or
+        Run a proposal the stand's owner or an administrator allowed, once, as the source's writing user, and get back how many documents or
         rows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,
         refused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would
         touch more rows than the person allowed.

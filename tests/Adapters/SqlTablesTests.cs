@@ -120,7 +120,7 @@ public abstract class SqlTablesTests(SqlFixture database)
 {
     private static readonly RowLimit Page = new(Rows: 10, Bytes: 65536, Seconds: 30);
 
-    private readonly SqlTables _tables = new();
+    private readonly SqlTables _tables = new(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions()));
 
     /// <summary>A statement that waits five seconds, in the engine's dialect.</summary>
     protected abstract string Slow { get; }
@@ -284,7 +284,7 @@ public abstract class SqlTablesTests(SqlFixture database)
 /// <summary>The checks against PostgreSQL, whose transaction also refuses a write itself.</summary>
 public sealed class PostgresTablesTests(PostgresFixture postgres) : SqlTablesTests(postgres), IClassFixture<PostgresFixture>
 {
-    private readonly SqlTables _tables = new();
+    private readonly SqlTables _tables = new(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions()));
 
     protected override string Slow => "SELECT pg_sleep(5)";
 

@@ -25,9 +25,12 @@ public static class ApprovalEndpointExtensions
                     : Results.NotFound());
 
             app.MapPost("/proposals/{id}/decision", async (string id, ProposalDecision decision, HttpRequest request, Writes writes, CancellationToken cancellationToken) =>
-                await writes.DecideAsync(id, request.Headers[KeyHeader].FirstOrDefault(), decision.Allow, decision.By, decision.Comment, cancellationToken) is { } proposal
-                    ? Results.Text(ToolResponse.Data(proposal).ToJsonString(ToolResponse.Options), "application/json")
-                    : Results.NotFound());
+                await writes.DecideAsync(id, request.Headers[KeyHeader].FirstOrDefault(), decision.Allow, decision.By, decision.Comment, cancellationToken) switch
+                {
+                    null => Results.NotFound(),
+                    { Value: { } proposal } => Results.Text(ToolResponse.Data(proposal).ToJsonString(ToolResponse.Options), "application/json"),
+                    var refused => Results.Text(ToolResponse.Refusal(refused.Error!, refused.Hint).ToJsonString(ToolResponse.Options), "application/json", statusCode: StatusCodes.Status503ServiceUnavailable)
+                });
 
             return app;
         }

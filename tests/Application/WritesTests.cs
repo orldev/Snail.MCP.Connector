@@ -173,7 +173,7 @@ public sealed class WritesTests
         Assert.Equal(3, applied.Value.Written);
         Assert.Single(_fakes.Database.WrittenProposals);
         Assert.Equal(Messages.AlreadyApplied, again.Error);
-        Assert.Equal(["propose", "approve", "apply"], _fakes.Written.Records.Select(record => record.Operation));
+        Assert.Equal(["propose", "approve", "applying", "apply"], _fakes.Written.Records.Select(record => record.Operation));
     }
 
     [Fact]
@@ -212,6 +212,43 @@ public sealed class WritesTests
         var applied = await _fakes.Writes(clock).ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.Expired(7), applied.Error);
+    }
+
+    /// <summary>No change to a company's data goes unrecorded: with the journal down nothing is proposed, decided or written.</summary>
+    [Fact]
+    public async Task ProposeAsync_JournalDown_KeepsNoProposal()
+    {
+        _fakes.Written.IsDown = true;
+
+        var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "update", """{"stage": "lead"}""", """{"$set": {"stage": "won"}}""", "signed", CancellationToken.None);
+
+        Assert.Equal(Messages.JournalDown, proposed.Error);
+        Assert.Empty(_fakes.Kept.All);
+    }
+
+    [Fact]
+    public async Task DecideAsync_JournalDown_LeavesTheProposalWaiting()
+    {
+        var proposal = await ProposedAsync();
+        _fakes.Written.IsDown = true;
+
+        var decided = await _fakes.Writes().DecideAsync(proposal.Id, Key, isAllowed: true, "owner", null, CancellationToken.None);
+
+        Assert.Equal(Messages.JournalDown, decided!.Error);
+        Assert.Equal(ProposalState.Pending, _fakes.Kept.All[proposal.Id].State);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_JournalDown_WritesNothing()
+    {
+        var proposal = await ProposedAsync();
+        await _fakes.Writes().DecideAsync(proposal.Id, Key, isAllowed: true, "owner", null, CancellationToken.None);
+        _fakes.Written.IsDown = true;
+
+        var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
+
+        Assert.Equal(Messages.JournalDown, applied.Error);
+        Assert.Empty(_fakes.Database.WrittenProposals);
     }
 
     private async Task<WriteProposal> ProposedAsync() =>

@@ -306,7 +306,7 @@
   },
   {
     "name": "connector_propose_write",
-    "description": "Propose a change to a company database \u2014 update, update_one, insert or delete \u2014 when the task needs one. Nothing is written: the server\ndry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and\nanswers a proposal id. Then call request_write_approval with server \u0022connector\u0022 and that proposal: the task waits\nuntil the stand\u0027s owner reads the proposal and allows or refuses it. An update or a delete needs a filter naming\nthe documents; an update is field operators such as $set; one proposal touches at most 1000 documents or rows.\nThe source must have a writing user. On a SQL source the collection is the table, the filter is columns and\nvalues \u2014 {\u0022id\u0022: 42}, or comparisons $eq, $ne, $gt, $gte, $lt, $lte, $in and $null, all of which must hold \u2014 an\nupdate is $set and $inc, an insert is an array of rows, and update_one needs a filter that matches exactly one\nrow; the server writes the statement itself.",
+    "description": "Propose a change to a company database \u2014 update, update_one, insert or delete \u2014 when the task needs one. Nothing is written: the server\ndry-runs it as the read-only user, counts the documents it touches and keeps a few of them as they are now, and\nanswers a proposal id. Then call request_write_approval with server \u0022connector\u0022 and that proposal: the task waits\nuntil the stand\u0027s owner or an administrator reads the proposal and allows or refuses it. An update or a delete needs a filter naming\nthe documents; an update is field operators such as $set; one proposal touches at most 1000 documents or rows.\nThe source must have a writing user. On a SQL source the collection is the table, the filter is columns and\nvalues \u2014 {\u0022id\u0022: 42}, or comparisons $eq, $ne, $gt, $gte, $lt, $lte, $in and $null, all of which must hold \u2014 an\nupdate is $set and $inc, an insert is an array of rows, and update_one needs a filter that matches exactly one\nrow; the server writes the statement itself.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -360,7 +360,7 @@
   },
   {
     "name": "connector_apply",
-    "description": "Run a proposal the stand\u0027s owner allowed, once, as the source\u0027s writing user, and get back how many documents or\nrows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,\nrefused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would\ntouch more rows than the person allowed.",
+    "description": "Run a proposal the stand\u0027s owner or an administrator allowed, once, as the source\u0027s writing user, and get back how many documents or\nrows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,\nrefused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would\ntouch more rows than the person allowed.",
     "inputSchema": {
       "type": "object",
       "properties": {

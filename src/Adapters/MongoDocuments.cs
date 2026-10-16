@@ -8,7 +8,9 @@ using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Snail.MCP.Connector.Application;
+using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
+using Snail.MCP.Connector.Configuration;
 
 namespace Snail.MCP.Connector.Adapters;
 
@@ -19,8 +21,11 @@ namespace Snail.MCP.Connector.Adapters;
 /// primary the company's own applications write to. Every query carries the server's time limit, which MongoDB enforces
 /// itself (maxTimeMS). Rows are read one more than asked, so an answer knows it was cut.
 /// </remarks>
-public sealed partial class MongoDocuments : IDocuments, IDisposable
+public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) : IDocuments, IDisposable
 {
+    /// <summary>How long one call to the database may run, from QUERY_SECONDS.</summary>
+    private int Seconds => options.Value.QuerySeconds;
+
     private static readonly JsonWriterSettings Relaxed = new() { OutputMode = JsonOutputMode.RelaxedExtendedJson };
 
     private const int Depth = 4;
@@ -38,7 +43,7 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
             var names = await Database(source).ListCollectionNamesAsync(cancellationToken: cancellationToken);
 
             return (IReadOnlyList<string>)await names.ToListAsync(cancellationToken);
-        }, 30);
+        }, Seconds);
 
     /// <inheritdoc />
     public async Task<Answer<CollectionShape>> ShapeAsync(ReachableSource source, string collection, int sample, CancellationToken cancellationToken) =>
@@ -46,11 +51,11 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
         {
             var documents = Database(source).GetCollection<BsonDocument>(collection);
             long estimated = await documents.EstimatedDocumentCountAsync(cancellationToken: cancellationToken);
-            var sampled = await documents.Aggregate(new AggregateOptions { MaxTime = TimeSpan.FromSeconds(30) }).Sample(sample).ToListAsync(cancellationToken);
+            var sampled = await documents.Aggregate(new AggregateOptions { MaxTime = TimeSpan.FromSeconds(Seconds) }).Sample(sample).ToListAsync(cancellationToken);
             var indexes = await (await documents.Indexes.ListAsync(cancellationToken)).ToListAsync(cancellationToken);
 
             return new CollectionShape(collection, estimated, sampled.Count, Fields(sampled)) { Indexes = [.. indexes.Select(index => index["key"].ToJson(Relaxed))] };
-        }, 30);
+        }, Seconds);
 
     /// <inheritdoc />
     public async Task<Answer<RowPage>> FindAsync(ReachableSource source, DocumentQuery query, CancellationToken cancellationToken) =>
@@ -85,7 +90,7 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
     /// <inheritdoc />
     public async Task<Answer<long>> CountAsync(ReachableSource source, string collection, string filter, CancellationToken cancellationToken) =>
         await GuardedAsync(source, () =>
-            Database(source).GetCollection<BsonDocument>(collection).CountDocumentsAsync(BsonDocument.Parse(filter), new CountOptions { MaxTime = TimeSpan.FromSeconds(30) }, cancellationToken), 30);
+            Database(source).GetCollection<BsonDocument>(collection).CountDocumentsAsync(BsonDocument.Parse(filter), new CountOptions { MaxTime = TimeSpan.FromSeconds(Seconds) }, cancellationToken), Seconds);
 
     /// <inheritdoc />
     public async Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string collection, string filter, int sample, CancellationToken cancellationToken) =>
@@ -93,11 +98,11 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
         {
             var documents = Database(source).GetCollection<BsonDocument>(collection);
             var matching = BsonDocument.Parse(filter);
-            long matched = await documents.CountDocumentsAsync(matching, new CountOptions { MaxTime = TimeSpan.FromSeconds(30) }, cancellationToken);
-            var shown = await documents.Find(matching, new FindOptions { MaxTime = TimeSpan.FromSeconds(30) }).Limit(sample).ToListAsync(cancellationToken);
+            long matched = await documents.CountDocumentsAsync(matching, new CountOptions { MaxTime = TimeSpan.FromSeconds(Seconds) }, cancellationToken);
+            var shown = await documents.Find(matching, new FindOptions { MaxTime = TimeSpan.FromSeconds(Seconds) }).Limit(sample).ToListAsync(cancellationToken);
 
             return new WritePreview(matched, [.. shown.Select(Row)]);
-        }, 30);
+        }, Seconds);
 
     /// <inheritdoc />
     /// <remarks>By the writing user, on the primary — a write never goes anywhere else — and only what the proposal says.</remarks>
@@ -106,19 +111,40 @@ public sealed partial class MongoDocuments : IDocuments, IDisposable
         if (source.Access.WriteUri is not { } uri)
             return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
 
-        return await GuardedAsync(source, async () =>
-        {
-            var documents = _writers.GetOrAdd(uri, Writer).GetDatabase(source.Source.Database).GetCollection<BsonDocument>(proposal.Collection);
-            var filter = BsonDocument.Parse(proposal.Filter);
+        var documents = _writers.GetOrAdd(uri, Writer).GetDatabase(source.Source.Database).GetCollection<BsonDocument>(proposal.Collection);
+        if (proposal.Operation is WriteOperation.Insert)
+            return await GuardedAsync(source, () => InsertAsync(documents, proposal.Change, cancellationToken), Seconds);
 
-            return proposal.Operation switch
-            {
-                WriteOperation.Insert => await InsertAsync(documents, proposal.Change, cancellationToken),
-                WriteOperation.Update => (await documents.UpdateManyAsync(filter, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
-                WriteOperation.UpdateOne => (await documents.UpdateOneAsync(filter, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
-                _ => (await documents.DeleteManyAsync(filter, cancellationToken)).DeletedCount
-            };
-        }, 30);
+        var matching = await GuardedAsync(source, () => MatchingAsync(documents, proposal, cancellationToken), Seconds);
+        if (matching.Value is not { } ids)
+            return Answer.Failed<long>(matching.Error!, matching.Hint);
+
+        if (ids.Count > proposal.Matched)
+            return Answer.Failed<long>(Messages.Changed(ids.Count, proposal.Matched));
+
+        var bounded = Builders<BsonDocument>.Filter.And(BsonDocument.Parse(proposal.Filter), Builders<BsonDocument>.Filter.In("_id", ids));
+
+        return await GuardedAsync(source, async () => proposal.Operation switch
+        {
+            WriteOperation.Update => (await documents.UpdateManyAsync(bounded, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
+            WriteOperation.UpdateOne => (await documents.UpdateOneAsync(bounded, BsonDocument.Parse(proposal.Change), cancellationToken: cancellationToken)).ModifiedCount,
+            _ => (await documents.DeleteManyAsync(bounded, cancellationToken)).DeletedCount
+        }, Seconds);
+    }
+
+    /// <summary>The ids of the documents the proposal's filter matches now, one past what the person allowed at most.</summary>
+    /// <remarks>
+    /// A person allowed the write for the documents they read. Read again by the writing user, the filter may match more
+    /// than then — the data grew — and the write is refused; otherwise it runs on exactly these ids, so a document that
+    /// came in after the decision is not touched. MongoDB without a replica set has no transaction to roll back.
+    /// </remarks>
+    private async Task<IReadOnlyList<BsonValue>> MatchingAsync(IMongoCollection<BsonDocument> documents, WriteProposal proposal, CancellationToken cancellationToken)
+    {
+        int most = (int)Math.Min(int.MaxValue - 1, proposal.Matched) + 1;
+        var found = await documents.Find(BsonDocument.Parse(proposal.Filter), new FindOptions { MaxTime = TimeSpan.FromSeconds(Seconds) })
+            .Project(Builders<BsonDocument>.Projection.Include("_id")).Limit(most).ToListAsync(cancellationToken);
+
+        return [.. found.Select(document => document["_id"])];
     }
 
     /// <inheritdoc />

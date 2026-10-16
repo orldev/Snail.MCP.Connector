@@ -51,12 +51,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON invoices, payments TO writer;
 
 A write is proposed, never made at once. `connector_propose_write` dry-runs it as the read-only user — how many
 documents it touches, three of them as they are — and keeps it in the data folder; the agent then calls the platform's
-`request_write_approval`, and the task waits. The stand's owner reads the proposal in the dashboard, which takes it from
+`request_write_approval`, and the task waits. The stand's owner or an administrator (the right to manage agents) reads the proposal in the dashboard, which takes it from
 this server at `GET /proposals/{id}` and brings the decision to `POST /proposals/{id}/decision`, both with the
 `X-Approval-Key` header — a key the stand gives the dashboard and no agent. `connector_apply` then runs an allowed
 proposal once, as the writing user, for the task that proposed it, within 7 days. An update or a delete needs a filter;
-an update is field operators; one proposal touches at most 1000 documents or rows. Without `APPROVAL_KEY` writes are
-off.
+an update is field operators; one proposal touches at most 1000 documents or rows. Applied to MongoDB, the writing
+user reads the ids the filter matches now and writes only those: more than the person allowed, and nothing is written —
+the data changed, propose again. Every step — propose, decision, applying, apply — goes into the journal first; a step
+the journal cannot hold is not taken. Without `APPROVAL_KEY` writes are off.
 
 A SQL table is written the same way, and no SQL an agent wrote is ever run: the filter is columns and values —
 `{"id": 42}`, or `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$null`, all of which must hold — an update is `$set`

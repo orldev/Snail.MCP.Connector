@@ -10,7 +10,9 @@ using Microsoft.Data.SqlClient;
 using Npgsql;
 using NpgsqlTypes;
 using Snail.MCP.Connector.Application;
+using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
+using Snail.MCP.Connector.Configuration;
 
 namespace Snail.MCP.Connector.Adapters;
 
@@ -21,20 +23,23 @@ namespace Snail.MCP.Connector.Adapters;
 /// timeout). Rows are read one more than asked, so an answer knows it was cut, and reading stops there rather than
 /// pulling the rest of a large result over the network.
 /// </remarks>
-public sealed partial class SqlTables : ITables
+public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITables
 {
+    /// <summary>How long one call to the database may run, from QUERY_SECONDS.</summary>
+    private int Seconds => options.Value.QuerySeconds;
+
     private const int Sample = 3;
 
     private const int ExampleLength = 60;
 
     /// <inheritdoc />
     public async Task<Answer<IReadOnlyList<string>>> TablesAsync(ReachableSource source, CancellationToken cancellationToken) =>
-        await GuardedAsync(source, 30, async (connection, transaction) =>
+        await GuardedAsync(source, Seconds, async (connection, transaction) =>
         {
             const string sql = "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'sys') ORDER BY table_schema, table_name";
             List<string> tables = [];
 
-            await using var command = Command(connection, transaction, sql, 30);
+            await using var command = Command(connection, transaction, sql, Seconds);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 tables.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
@@ -44,7 +49,7 @@ public sealed partial class SqlTables : ITables
 
     /// <inheritdoc />
     public async Task<Answer<CollectionShape>> ShapeAsync(ReachableSource source, string table, CancellationToken cancellationToken) =>
-        await GuardedAsync(source, 30, async (connection, transaction) =>
+        await GuardedAsync(source, Seconds, async (connection, transaction) =>
         {
             var name = await ResolvedAsync(connection, transaction, table, cancellationToken);
             var columns = await ColumnsAsync(connection, transaction, name, cancellationToken);
@@ -103,16 +108,16 @@ public sealed partial class SqlTables : ITables
 
     /// <inheritdoc />
     public async Task<Answer<WritePreview>> PreviewAsync(ReachableSource source, string table, string filter, int sample, CancellationToken cancellationToken) =>
-        await GuardedAsync(source, 30, async (connection, transaction) =>
+        await GuardedAsync(source, Seconds, async (connection, transaction) =>
         {
             string name = Quoted(source.Source.Kind, await ResolvedAsync(connection, transaction, table, cancellationToken));
             var matching = JsonNode.Parse(filter)!.AsObject();
 
-            await using var count = Bound(source.Source.Kind, connection, transaction, SqlStatements.Count(source.Source.Kind, name, matching), 30);
+            await using var count = Bound(source.Source.Kind, connection, transaction, SqlStatements.Count(source.Source.Kind, name, matching), Seconds);
             long matched = Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
             List<string> shown = [];
-            await using var rows = Bound(source.Source.Kind, connection, transaction, SqlStatements.Sample(source.Source.Kind, name, matching, sample), 30);
+            await using var rows = Bound(source.Source.Kind, connection, transaction, SqlStatements.Sample(source.Source.Kind, name, matching, sample), Seconds);
             await using var reader = await rows.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 shown.Add(Row(reader));
@@ -138,7 +143,7 @@ public sealed partial class SqlTables : ITables
             long written = 0;
             foreach (var statement in SqlStatements.Write(kind, name, proposal))
             {
-                await using var command = Bound(kind, connection, transaction, statement, 30);
+                await using var command = Bound(kind, connection, transaction, statement, Seconds);
                 written += await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -154,7 +159,7 @@ public sealed partial class SqlTables : ITables
         }
         catch (Exception exception) when (IsTimeout(exception))
         {
-            return Answer.Failed<long>(Messages.TooSlow(30), Messages.TooSlowHint);
+            return Answer.Failed<long>(Messages.TooSlow(Seconds), Messages.TooSlowHint);
         }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or ArgumentException or TimeoutException)
         {
@@ -199,13 +204,13 @@ public sealed partial class SqlTables : ITables
     };
 
     /// <summary>A transaction the statement runs in and that is never committed; PostgreSQL's also refuses any write itself.</summary>
-    private static async Task<DbTransaction> ReadOnlyAsync(SourceKind kind, DbConnection connection, CancellationToken cancellationToken)
+    private async Task<DbTransaction> ReadOnlyAsync(SourceKind kind, DbConnection connection, CancellationToken cancellationToken)
     {
         var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         if (kind is not SourceKind.PostgreSql)
             return transaction;
 
-        await using var command = Command(connection, transaction, "SET TRANSACTION READ ONLY", 30);
+        await using var command = Command(connection, transaction, "SET TRANSACTION READ ONLY", Seconds);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return transaction;
@@ -261,12 +266,12 @@ public sealed partial class SqlTables : ITables
     }
 
     /// <summary>The table's schema and name as the database spells them; a bare name is looked up, the usual schema first.</summary>
-    private static async Task<TableName> ResolvedAsync(DbConnection connection, DbTransaction transaction, string table, CancellationToken cancellationToken)
+    private async Task<TableName> ResolvedAsync(DbConnection connection, DbTransaction transaction, string table, CancellationToken cancellationToken)
     {
         string[] parts = table.Split('.', 2);
         const string sql = "SELECT table_schema, table_name FROM information_schema.tables WHERE lower(table_name) = lower(@table) AND (@schema = '' OR lower(table_schema) = lower(@schema)) ORDER BY CASE WHEN table_schema IN ('public', 'dbo') THEN 0 ELSE 1 END, table_schema";
 
-        await using var command = Command(connection, transaction, sql, 30);
+        await using var command = Command(connection, transaction, sql, Seconds);
         Parameter(command, "@table", parts[^1]);
         Parameter(command, "@schema", parts.Length == 2 ? parts[0] : string.Empty);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -277,12 +282,12 @@ public sealed partial class SqlTables : ITables
         return new TableName(reader.GetString(0), reader.GetString(1));
     }
 
-    private static async Task<IReadOnlyList<ColumnShape>> ColumnsAsync(DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ColumnShape>> ColumnsAsync(DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
     {
         const string sql = "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = @schema AND table_name = @table ORDER BY ordinal_position";
         List<ColumnShape> columns = [];
 
-        await using var command = Command(connection, transaction, sql, 30);
+        await using var command = Command(connection, transaction, sql, Seconds);
         Parameter(command, "@schema", name.Schema);
         Parameter(command, "@table", name.Table);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -292,14 +297,14 @@ public sealed partial class SqlTables : ITables
         return columns;
     }
 
-    private static async Task<Dictionary<string, string>> ExamplesAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> ExamplesAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
     {
         string sql = kind is SourceKind.PostgreSql
             ? $"SELECT * FROM {Quoted(kind, name)} LIMIT {Sample}"
             : $"SELECT TOP ({Sample}) * FROM {Quoted(kind, name)}";
         var examples = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        await using var command = Command(connection, transaction, sql, 30);
+        await using var command = Command(connection, transaction, sql, Seconds);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -313,13 +318,13 @@ public sealed partial class SqlTables : ITables
         return examples;
     }
 
-    private static async Task<long> EstimateAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
+    private async Task<long> EstimateAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
     {
         string sql = kind is SourceKind.PostgreSql
             ? "SELECT greatest(c.reltuples, 0)::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = @schema AND c.relname = @table"
             : "SELECT CAST(SUM(p.rows) AS bigint) FROM sys.partitions p JOIN sys.tables t ON t.object_id = p.object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = @schema AND t.name = @table AND p.index_id IN (0, 1)";
 
-        await using var command = Command(connection, transaction, sql, 30);
+        await using var command = Command(connection, transaction, sql, Seconds);
         Parameter(command, "@schema", name.Schema);
         Parameter(command, "@table", name.Table);
         object? counted = await command.ExecuteScalarAsync(cancellationToken);
@@ -327,14 +332,14 @@ public sealed partial class SqlTables : ITables
         return counted is null or DBNull ? 0 : Convert.ToInt64(counted, CultureInfo.InvariantCulture);
     }
 
-    private static async Task<IReadOnlyList<string>> IndexesAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> IndexesAsync(SourceKind kind, DbConnection connection, DbTransaction transaction, TableName name, CancellationToken cancellationToken)
     {
         string sql = kind is SourceKind.PostgreSql
             ? "SELECT indexdef FROM pg_indexes WHERE schemaname = @schema AND tablename = @table ORDER BY indexname"
             : "SELECT i.name + ' (' + STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) + ')' FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id JOIN sys.tables t ON t.object_id = i.object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = @schema AND t.name = @table AND i.name IS NOT NULL GROUP BY i.name ORDER BY i.name";
         List<string> indexes = [];
 
-        await using var command = Command(connection, transaction, sql, 30);
+        await using var command = Command(connection, transaction, sql, Seconds);
         Parameter(command, "@schema", name.Schema);
         Parameter(command, "@table", name.Table);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -350,7 +355,7 @@ public sealed partial class SqlTables : ITables
 
     private static string Shortened(string text) => text.Length <= ExampleLength ? text : $"{text[..ExampleLength]}…";
 
-    private static async Task<Answer<T>> GuardedAsync<T>(ReachableSource source, int seconds, Func<DbConnection, DbTransaction, Task<T>> read, CancellationToken cancellationToken)
+    private async Task<Answer<T>> GuardedAsync<T>(ReachableSource source, int seconds, Func<DbConnection, DbTransaction, Task<T>> read, CancellationToken cancellationToken)
     {
         try
         {

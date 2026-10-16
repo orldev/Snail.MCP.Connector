@@ -22,6 +22,13 @@ public static class WriteRules
             ? Answer.Ok(operation)
             : Answer.Failed<WriteOperation>(Messages.BadOperation);
 
+    /// <summary>The operation as a proposal is asked with and every answer and journal line spells it: update, update_one, insert, delete.</summary>
+    public static string Word(WriteOperation operation) => operation switch
+    {
+        WriteOperation.UpdateOne => "update_one",
+        _ => operation.ToString().ToLowerInvariant()
+    };
+
     /// <summary>The filter of an update or a delete, which has to name something.</summary>
     public static Answer<JsonObject> Filter(string? text)
     {

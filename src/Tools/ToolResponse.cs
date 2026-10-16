@@ -74,6 +74,9 @@ public static class ToolResponse
     public static CallToolResult From(Answer<WriteProposal> answer) =>
         Of(answer, proposal => Data(proposal));
 
+    /// <summary>A refusal as every answer of this server words it: ok false, what went wrong and what to do.</summary>
+    public static JsonObject Refusal(string error, string? hint) => new() { ["ok"] = false, ["error"] = error, ["hint"] = hint };
+
     /// <summary>A proposal as the agent and the dashboard read it.</summary>
     public static JsonObject Data(WriteProposal proposal) => new()
     {
@@ -81,7 +84,7 @@ public static class ToolResponse
         ["state"] = Word(proposal.State),
         ["source"] = proposal.Source,
         ["collection"] = proposal.Collection,
-        ["operation"] = Word(proposal.Operation),
+        ["operation"] = WriteRules.Word(proposal.Operation),
         ["filter"] = JsonNode.Parse(proposal.Filter),
         ["change"] = JsonNode.Parse(proposal.Change),
         ["reason"] = proposal.Reason,
@@ -109,7 +112,7 @@ public static class ToolResponse
     public static CallToolResult Failure(string error, string? hint) => new()
     {
         IsError = true,
-        Content = [new TextContentBlock { Text = new JsonObject { ["ok"] = false, ["error"] = error, ["hint"] = hint }.ToJsonString(Options) }],
+        Content = [new TextContentBlock { Text = Refusal(error, hint).ToJsonString(Options) }],
         StructuredContent = JsonSerializer.SerializeToElement(new JsonObject { ["error"] = error, ["hint"] = hint }, Options)
     };
 

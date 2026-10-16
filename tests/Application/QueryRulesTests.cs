@@ -52,6 +52,9 @@ public sealed class QueryRulesTests
     [InlineData("""[{"$unionWith": "salaries"}]""")]
     [InlineData("""[{"$unionWith": {"coll": "salaries", "pipeline": []}}]""")]
     [InlineData("""[{"$lookup": {"from": "customers", "as": "c", "pipeline": [{"$unionWith": "salaries"}]}}]""")]
+    [InlineData("""[{"$facet": {"all": [{"$lookup": {"from": "salaries", "localField": "a", "foreignField": "b", "as": "c"}}]}}]""")]
+    [InlineData("""[{"$facet": {"x": [{"$unionWith": {"coll": "salaries"}}], "y": [{"$count": "n"}]}}]""")]
+    [InlineData("""[{"$facet": {"x": [{"$lookup": {"from": "customers", "as": "c", "pipeline": [{"$facet": {"z": [{"$unionWith": "salaries"}]}}]}}]}}]""")]
     public void Pipeline_JoinOfACollectionTheSourceKeeps_IsRefusedNamingIt(string pipeline)
     {
         var parsed = QueryRules.Pipeline(pipeline, Sales);
@@ -87,5 +90,15 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Pipeline(pipeline, Sales);
 
         Assert.Equal(Messages.NotAPipeline, parsed.Error);
+    }
+
+    /// <summary>A join into another database names it as an object; no source allows that.</summary>
+    [Fact]
+    public void Pipeline_JoinIntoAnotherDatabase_IsRefused()
+    {
+        var parsed = QueryRules.Pipeline("""[{"$lookup": {"from": {"db": "hr", "coll": "salaries"}, "localField": "a", "foreignField": "b", "as": "c"}}]""", Sales);
+
+        Assert.StartsWith(Messages.CollectionKept("sales", "{").Split('{')[0], parsed.Error, StringComparison.Ordinal);
+        Assert.Contains("hr", parsed.Error, StringComparison.Ordinal);
     }
 }

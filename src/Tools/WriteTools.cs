@@ -5,7 +5,7 @@ using Snail.MCP.Connector.Application;
 
 namespace Snail.MCP.Connector.Tools;
 
-/// <summary>Writes to the company's databases: proposed by the agent, allowed by the stand's owner, run once.</summary>
+/// <summary>Writes to the company's databases: proposed by the agent, allowed by the stand's owner or an administrator, run once.</summary>
 [McpServerToolType]
 public sealed class WriteTools(Writes writes)
 {

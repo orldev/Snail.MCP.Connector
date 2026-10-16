@@ -56,11 +56,19 @@ public static partial class SqlRules
     }
 
     /// <summary>Whether the source allows a table named bare or with its schema.</summary>
+    /// <remarks>
+    /// A SQL database names its tables in any case — SQL Server keeps <c>Invoices</c> as written, a statement may say
+    /// <c>invoices</c> — so a SQL source compares names without case; a document database's collections keep theirs.
+    /// </remarks>
     public static bool IsAllowed(Source source, string table)
     {
         string bareName = table.Contains('.', StringComparison.Ordinal) ? table[(table.LastIndexOf('.') + 1)..] : table;
+        if (source.Kind is SourceKind.MongoDb)
+            return source.Allows(table) || source.Allows(bareName);
 
-        return source.Allows(table) || source.Allows(bareName);
+        return source.Collections.Any(allowed => allowed == Source.Every
+            || string.Equals(allowed, table, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(allowed, bareName, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>The statement with comments removed and every string literal emptied.</summary>
@@ -120,9 +128,117 @@ public static partial class SqlRules
         return text.Length;
     }
 
-    /// <summary>The names after FROM and JOIN, unquoted and lower-cased, with their schema when written.</summary>
-    private static IEnumerable<string> Tables(string bare) =>
-        Table().Matches(bare).Select(match => Unquoted(match.Groups["name"].Value));
+    /// <summary>The words that end a table's alias: a clause, a join or a set operation.</summary>
+    private static readonly IReadOnlySet<string> Clauses = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "where", "group", "order", "having", "limit", "offset", "join", "inner", "left", "right", "full", "outer", "cross",
+        "natural", "on", "using", "union", "except", "intersect", "window", "fetch", "for", "tablesample", "with", "pivot",
+        "unpivot", "apply", "lateral", "option", "select", "into", "values", "returning"
+    };
+
+    /// <summary>The functions whose own argument list says FROM without naming a table.</summary>
+    private static readonly IReadOnlySet<string> Spelled = new HashSet<string>(StringComparer.Ordinal) { "extract", "substring", "trim", "overlay", "position" };
+
+    /// <summary>Every table the statement reads: each one after FROM, JOIN or APPLY, and each one of a comma-separated FROM list.</summary>
+    /// <remarks>
+    /// A FROM list names its tables one after another — <c>FROM invoices i, secrets s</c> — so every item is read, not the
+    /// first: a table kept out must not come in second. A subquery is skipped here because its own FROM is read in turn; a
+    /// function after FROM is named like a table, so one the source does not allow is refused too. FROM inside
+    /// <c>EXTRACT(year FROM issued)</c> and its kind names no table.
+    /// </remarks>
+    private static IEnumerable<string> Tables(string bare)
+    {
+        IReadOnlyList<string> tokens = [.. Token().Matches(bare).Select(match => match.Value)];
+        var opened = new Stack<string>();
+
+        for (int index = 0; index < tokens.Count; index++)
+        {
+            string word = tokens[index].ToLowerInvariant();
+            if (word == "(")
+            {
+                opened.Push(index > 0 ? tokens[index - 1].ToLowerInvariant() : string.Empty);
+                continue;
+            }
+
+            if (word == ")")
+            {
+                opened.TryPop(out _);
+                continue;
+            }
+
+            if (word is not ("from" or "join" or "apply") || (word == "from" && opened.TryPeek(out string? owner) && Spelled.Contains(owner)))
+                continue;
+
+            int at = index + 1;
+            while (at < tokens.Count)
+            {
+                var item = Item(tokens, at);
+                if (item.Name is { } name)
+                    yield return name;
+
+                at = item.Next;
+                if (at >= tokens.Count || tokens[at] != ",")
+                    break;
+
+                at++;
+            }
+        }
+    }
+
+    /// <summary>One item of a FROM list read from <paramref name="at"/>: the table it names, if any, and where the item ends.</summary>
+    private static TableItem Item(IReadOnlyList<string> tokens, int at)
+    {
+        while (at < tokens.Count && tokens[at].ToLowerInvariant() is "lateral" or "only")
+            at++;
+
+        if (at >= tokens.Count)
+            return new TableItem(null, at);
+
+        string? name = null;
+        if (tokens[at] == "(")
+        {
+            at = AfterParentheses(tokens, at);
+        }
+        else if (IsName(tokens[at]))
+        {
+            var parts = new List<string> { tokens[at] };
+            at++;
+            while (at + 1 < tokens.Count && tokens[at] == "." && IsName(tokens[at + 1]))
+            {
+                parts.Add(tokens[at + 1]);
+                at += 2;
+            }
+
+            name = Unquoted(string.Join('.', parts));
+            if (at < tokens.Count && tokens[at] == "(")
+                at = AfterParentheses(tokens, at);
+        }
+
+        if (at < tokens.Count && tokens[at].Equals("as", StringComparison.OrdinalIgnoreCase))
+            at += 2;
+        else if (at < tokens.Count && IsName(tokens[at]) && !Clauses.Contains(tokens[at].ToLowerInvariant()))
+            at++;
+
+        return new TableItem(name, at);
+    }
+
+    private static int AfterParentheses(IReadOnlyList<string> tokens, int at)
+    {
+        int depth = 0;
+        for (; at < tokens.Count; at++)
+        {
+            depth += tokens[at] == "(" ? 1 : tokens[at] == ")" ? -1 : 0;
+            if (depth == 0)
+                return at + 1;
+        }
+
+        return at;
+    }
+
+    private static bool IsName(string token) => token.Length > 0 && (char.IsLetter(token[0]) || token[0] is '_' or '"' or '[' or '`');
+
+    /// <summary>A table a FROM list names, or none for a subquery, and the index the item ends at.</summary>
+    private sealed record TableItem(string? Name, int Next);
 
     /// <summary>The names the statement gives its own results — common table expressions — which are not tables of the database.</summary>
     private static IReadOnlySet<string> Named(string bare) =>
@@ -134,8 +250,8 @@ public static partial class SqlRules
     [GeneratedRegex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.CultureInvariant)]
     private static partial Regex Word();
 
-    [GeneratedRegex(@"\b(?:from|join)\s+(?<name>(?:""[^""]+""|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*)(?:\s*\.\s*(?:""[^""]+""|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*))*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex Table();
+    [GeneratedRegex(@"""[^""]+""|\[[^\]]+\]|`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*|\S", RegexOptions.CultureInvariant)]
+    private static partial Regex Token();
 
     [GeneratedRegex(@"(?:\bwith\b|,)\s*(?<name>""[^""]+""|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\)\s*)?\bas\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Expression();

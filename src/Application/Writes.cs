@@ -47,8 +47,10 @@ public sealed class Writes(
             return shaped;
 
         var proposed = proposal with { Reason = reason.Trim() };
+        if (!await IsRecordedAsync(proposed, "propose", proposed.Matched, null, cancellationToken))
+            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+
         await proposals.SaveAsync(proposed, cancellationToken);
-        await RecordAsync(proposed, "propose", proposed.Matched, null, cancellationToken);
 
         return Answer.Ok(proposed);
     }
@@ -73,10 +75,13 @@ public sealed class Writes(
         if (found.Value is not { } source)
             return Answer.Failed<WriteProposal>(found.Error!, found.Hint);
 
+        if (!await IsRecordedAsync(proposal, "applying", proposal.Matched, null, cancellationToken))
+            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+
         var written = source.Source.Kind is SourceKind.MongoDb
             ? await documents.WriteAsync(source, proposal, cancellationToken)
             : await tables.WriteAsync(source, proposal, cancellationToken);
-        await RecordAsync(proposal, "apply", written.Value, written.Error, cancellationToken);
+        await IsRecordedAsync(proposal, "apply", written.Value, written.Error, cancellationToken);
         if (written.Error is not null)
             return Answer.Failed<WriteProposal>(written.Error, written.Hint);
 
@@ -91,7 +96,8 @@ public sealed class Writes(
         IsKey(key) ? await proposals.FindAsync(id.Trim(), cancellationToken) : null;
 
     /// <summary>A person's decision, brought by the dashboard with the server's key; null when the key is not the server's or nothing waits.</summary>
-    public async Task<WriteProposal?> DecideAsync(string id, string? key, bool isAllowed, string by, string? comment, CancellationToken cancellationToken)
+    /// <remarks>A decision the journal cannot hold is not taken: the answer says so, and the proposal still waits.</remarks>
+    public async Task<Answer<WriteProposal>?> DecideAsync(string id, string? key, bool isAllowed, string by, string? comment, CancellationToken cancellationToken)
     {
         if (!IsKey(key) || await proposals.FindAsync(id.Trim(), cancellationToken) is not { State: ProposalState.Pending } proposal)
             return null;
@@ -103,10 +109,12 @@ public sealed class Writes(
             DecidedAt = clock.GetUtcNow(),
             Comment = comment
         };
-        await proposals.SaveAsync(decided, cancellationToken);
-        await RecordAsync(decided, isAllowed ? "approve" : "reject", decided.Matched, null, cancellationToken);
+        if (!await IsRecordedAsync(decided, isAllowed ? "approve" : "reject", decided.Matched, null, cancellationToken))
+            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
 
-        return decided;
+        await proposals.SaveAsync(decided, cancellationToken);
+
+        return Answer.Ok(decided);
     }
 
     private Answer<WriteProposal>? Standing(WriteProposal proposal) => proposal.State switch
@@ -216,18 +224,21 @@ public sealed class Writes(
         return Answer.Ok(new WriteContext(source, current));
     }
 
-    private async Task RecordAsync(WriteProposal proposal, string operation, long rows, string? error, CancellationToken cancellationToken)
+    /// <summary>Writes one step of a write into the journal; false when the journal could not hold it.</summary>
+    private async Task<bool> IsRecordedAsync(WriteProposal proposal, string operation, long rows, string? error, CancellationToken cancellationToken)
     {
         string query = new JsonObject
         {
             ["proposal"] = proposal.Id,
-            ["operation"] = proposal.Operation.ToString().ToLowerInvariant(),
+            ["operation"] = WriteRules.Word(proposal.Operation),
             ["filter"] = JsonNode.Parse(proposal.Filter),
             ["change"] = JsonNode.Parse(proposal.Change),
             ["by"] = proposal.DecidedBy
         }.ToJsonString();
 
-        await journal.WriteAsync(new QueryRecord(clock.GetUtcNow(), proposal.Task, proposal.Source, proposal.Collection, operation, query, rows, 0, error), cancellationToken);
+        var recorded = await journal.WriteAsync(new QueryRecord(clock.GetUtcNow(), proposal.Task, proposal.Source, proposal.Collection, operation, query, rows, 0, error), cancellationToken);
+
+        return recorded.Error is null;
     }
 
     private bool IsKey(string? key) =>

@@ -47,7 +47,7 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
 {
     private static readonly RowLimit Page = new(Rows: 10, Bytes: 65536, Seconds: 30);
 
-    private readonly MongoDocuments _documents = new();
+    private readonly MongoDocuments _documents = new(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions()));
 
     public void Dispose() => _documents.Dispose();
 
@@ -149,13 +149,42 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         var writable = mongo.Source with { Source = mongo.Source.Source with { Collections = [Source.Every], CanWrite = true }, Access = mongo.Source.Access with { WriteUri = mongo.Source.Access.ReadUri } };
         var deals = new MongoClient(writable.Access.ReadUri).GetDatabase("sales").GetCollection<BsonDocument>("deals");
         await deals.InsertManyAsync([new BsonDocument("stage", "lead"), new BsonDocument("stage", "lead"), new BsonDocument("stage", "lost")]);
-        var proposal = Proposal("deals", WriteOperation.Update, """{"stage": "lead"}""", """{"$set": {"stage": "won"}}""");
+        var proposal = Proposal("deals", WriteOperation.Update, """{"stage": "lead"}""", """{"$set": {"stage": "won"}}""") with { Matched = 2 };
 
         var written = await _documents.WriteAsync(writable, proposal, CancellationToken.None);
 
         Assert.Equal(2, written.Value);
         Assert.Equal(2, await deals.CountDocumentsAsync(new BsonDocument("stage", "won")));
         Assert.Equal(1, await deals.CountDocumentsAsync(new BsonDocument("stage", "lost")));
+    }
+
+    /// <summary>The data grew past what the person read: nothing is written, and the agent is told to propose again.</summary>
+    [Fact]
+    public async Task WriteAsync_MoreDocumentsThanAllowed_IsRefusedAndWritesNothing()
+    {
+        var writable = Writable();
+        var leads = new MongoClient(writable.Access.ReadUri).GetDatabase("sales").GetCollection<BsonDocument>("leads");
+        await leads.InsertManyAsync([new BsonDocument("stage", "cold"), new BsonDocument("stage", "cold"), new BsonDocument("stage", "cold")]);
+        var proposal = Proposal("leads", WriteOperation.Delete, """{"stage": "cold"}""", "{}") with { Matched = 2 };
+
+        var written = await _documents.WriteAsync(writable, proposal, CancellationToken.None);
+
+        Assert.Equal(Messages.Changed(3, 2), written.Error);
+        Assert.Equal(3, await leads.CountDocumentsAsync(new BsonDocument("stage", "cold")));
+    }
+
+    /// <summary>Fewer documents than allowed is fine: the write runs on those it finds now.</summary>
+    [Fact]
+    public async Task WriteAsync_FewerDocumentsThanAllowed_WritesThem()
+    {
+        var writable = Writable();
+        var quotes = new MongoClient(writable.Access.ReadUri).GetDatabase("sales").GetCollection<BsonDocument>("quotes");
+        await quotes.InsertOneAsync(new BsonDocument("stage", "draft"));
+        var proposal = Proposal("quotes", WriteOperation.Update, """{"stage": "draft"}""", """{"$set": {"stage": "sent"}}""") with { Matched = 2 };
+
+        var written = await _documents.WriteAsync(writable, proposal, CancellationToken.None);
+
+        Assert.Equal(1, written.Value);
     }
 
     [Fact]
@@ -189,6 +218,9 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         Assert.Null(found.Value);
         Assert.NotNull(found.Error);
     }
+
+    private ReachableSource Writable() =>
+        mongo.Source with { Source = mongo.Source.Source with { Collections = [Source.Every], CanWrite = true }, Access = mongo.Source.Access with { WriteUri = mongo.Source.Access.ReadUri } };
 
     private static WriteProposal Proposal(string collection, WriteOperation operation, string filter, string change) => new()
     {

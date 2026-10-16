@@ -75,7 +75,7 @@ public static class Messages
     public const string ExtendedJsonHint = """Write it as MongoDB Extended JSON: {"status": "paid", "total": {"$gt": 100}}, dates as {"$date": "2026-01-31T00:00:00Z"}, ids as {"$oid": "…"}.""";
 
     /// <summary>What the server does not do.</summary>
-    public const string ReadOnlyHint = "This server only reads: no stage or operator that writes or runs code is accepted. Ask for the data and work with it in the answer.";
+    public const string ReadOnlyHint = "A query only reads: no stage or operator that writes or runs code is accepted. Ask for the data and work with it in the answer; a change to the data is proposed with connector_propose_write.";
 
     /// <summary>The journal could not be written.</summary>
     public const string JournalDown = "The answer is withheld: the query could not be written into the journal, and no data reaches an agent unrecorded.";
@@ -130,7 +130,7 @@ public static class Messages
 
     /// <summary>What the agent does after proposing.</summary>
     public static string Proposed(string id) =>
-        $"Nothing is written yet. Call request_write_approval with server \"connector\" and proposal \"{id}\": the task waits until the stand's owner allows or refuses it. When the task goes on with the approval, call connector_apply with this proposal.";
+        $"Nothing is written yet. Call request_write_approval with server \"connector\" and proposal \"{id}\": the task waits until the stand's owner or an administrator allows or refuses it. When the task goes on with the approval, call connector_apply with this proposal.";
 
     /// <summary>No proposal of that id.</summary>
     public static string NoProposal(string id) => $"No proposal is called \"{id}\".";
