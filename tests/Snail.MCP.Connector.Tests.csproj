@@ -24,6 +24,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Snail.MCP.Connector.Domain" />
+    <Using Include="Snail.Sdk.Mcp.Testing" />
   </ItemGroup>
 
 </Project>

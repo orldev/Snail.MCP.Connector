@@ -7,7 +7,7 @@ namespace Snail.MCP.Connector.Tests.Adapters;
 /// <summary>The journal of queries: a file a day, read back per task, old days deleted.</summary>
 public sealed class FileQueryJournalTests : IDisposable
 {
-    private readonly string _folder = Path.Combine(Path.GetTempPath(), $"connector-journal-{Guid.NewGuid():N}");
+    private readonly string _folder = TestFolder.Create();
 
     public void Dispose()
     {

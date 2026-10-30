@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using ModelContextProtocol.Client;
 using Snail.Sdk.Mcp.Hosting;
-using Snail.Sdk.Mcp.Testing;
 
 namespace Snail.MCP.Connector.Tests.Tools;
 

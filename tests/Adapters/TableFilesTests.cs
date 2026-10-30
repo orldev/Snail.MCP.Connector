@@ -10,7 +10,7 @@ namespace Snail.MCP.Connector.Tests.Adapters;
 /// <summary>Rows written as a table a person opens: nested fields as dotted columns, values quoted where a comma would split them.</summary>
 public sealed class TableFilesTests : IDisposable
 {
-    private readonly string _copy = Directory.CreateTempSubdirectory("connector-copy-").FullName;
+    private readonly string _copy = TestFolder.Create();
 
     public void Dispose() => Directory.Delete(_copy, recursive: true);
 
