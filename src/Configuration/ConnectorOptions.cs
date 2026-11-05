@@ -30,6 +30,9 @@ public sealed class ConnectorOptions
     /// <summary>Rows an export writes at most.</summary>
     public int MostExportRows { get; set; } = 100000;
 
+    /// <summary>Columns an export writes at most; the fields past them go into one column as the JSON of the rest.</summary>
+    public int MostExportColumns { get; set; } = 1000;
+
     /// <summary>Documents a collection's shape is read from.</summary>
     public int Sample { get; set; } = 200;
 
