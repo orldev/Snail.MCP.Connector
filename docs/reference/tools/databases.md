@@ -285,7 +285,8 @@ For MongoDB sources use connector_find and connector_aggregate.
 
 Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task's card offers a
 person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
-of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there.
+of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,
+and at most 1000 columns: the fields past them go into one column, _more, as JSON.
 
 *only adds · repeat-safe · stays on this machine.*
 

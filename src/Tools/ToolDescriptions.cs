@@ -72,7 +72,8 @@ public static class ToolDescriptions
         $"""
         Write rows into a {Formats} file of the task, under exports/ of the working copy, which the task's card offers a
         person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
-        of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there.
+        of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,
+        and at most 1000 columns: the fields past them go into one column, _more, as JSON.
         """;
 
     /// <summary>The collection parameter of connector_export.</summary>
@@ -109,9 +110,9 @@ public static class ToolDescriptions
     public const string Apply =
         """
         Run a proposal the stand's owner or an administrator allowed, once, as the source's writing user, and get back how many documents or
-        rows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,
-        refused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would
-        touch more rows than the person allowed.
+        rows it changed. Only the task that proposed it may run it, once, and only within 7 days; a proposal nobody allowed
+        yet, refused, already run or being run is refused with what to do. On SQL it runs in one transaction, rolled back
+        when it would touch more rows than the person allowed.
         """;
 
     /// <summary>The operation parameter.</summary>

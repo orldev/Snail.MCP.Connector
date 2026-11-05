@@ -220,7 +220,7 @@
   },
   {
     "name": "connector_export",
-    "description": "Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task\u0027s card offers a\nperson to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns\nof their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there.",
+    "description": "Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task\u0027s card offers a\nperson to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns\nof their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,\nand at most 1000 columns: the fields past them go into one column, _more, as JSON.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -360,7 +360,7 @@
   },
   {
     "name": "connector_apply",
-    "description": "Run a proposal the stand\u0027s owner or an administrator allowed, once, as the source\u0027s writing user, and get back how many documents or\nrows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,\nrefused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would\ntouch more rows than the person allowed.",
+    "description": "Run a proposal the stand\u0027s owner or an administrator allowed, once, as the source\u0027s writing user, and get back how many documents or\nrows it changed. Only the task that proposed it may run it, once, and only within 7 days; a proposal nobody allowed\nyet, refused, already run or being run is refused with what to do. On SQL it runs in one transaction, rolled back\nwhen it would touch more rows than the person allowed.",
     "inputSchema": {
       "type": "object",
       "properties": {

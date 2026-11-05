@@ -70,6 +70,7 @@ public sealed partial class ToolCatalogTests
     [InlineData(ToolDescriptions.Aggregate, nameof(ConnectorOptions.MostBytes))]
     [InlineData(ToolDescriptions.Aggregate, nameof(ConnectorOptions.QuerySeconds))]
     [InlineData(ToolDescriptions.Export, nameof(ConnectorOptions.MostExportRows))]
+    [InlineData(ToolDescriptions.Export, nameof(ConnectorOptions.MostExportColumns))]
     [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.Rows))]
     [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.MostRows))]
     [InlineData(ToolDescriptions.Query, nameof(ConnectorOptions.MostBytes))]

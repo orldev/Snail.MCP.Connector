@@ -76,9 +76,9 @@ row; the server writes the statement itself.
 ## <code>connector_<wbr>apply</code>
 
 Run a proposal the stand's owner or an administrator allowed, once, as the source's writing user, and get back how many documents or
-rows it changed. Only the task that proposed it may run it, and only within 7 days; a proposal nobody allowed yet,
-refused, or already run is refused with what to do. On SQL it runs in one transaction, rolled back when it would
-touch more rows than the person allowed.
+rows it changed. Only the task that proposed it may run it, once, and only within 7 days; a proposal nobody allowed
+yet, refused, already run or being run is refused with what to do. On SQL it runs in one transaction, rolled back
+when it would touch more rows than the person allowed.
 
 *may overwrite or delete · every call adds · stays on this machine.*
 
