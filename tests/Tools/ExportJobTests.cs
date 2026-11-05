@@ -59,8 +59,9 @@ public sealed class ExportJobTests
 
         await givenUp.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => calling);
+        var job = Assert.Single(_jobs.InFlight);
         _fakes.Held.SetResult();
-        var ended = await Assert.Single(_jobs.InFlight.Concat(_jobs.Recent)).Completion;
+        var ended = await job.Completion;
 
         Assert.Equal(JobState.Succeeded, ended.State);
         Assert.Equal("export", _fakes.Written.Records[^1].Operation);
