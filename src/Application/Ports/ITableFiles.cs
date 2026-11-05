@@ -20,6 +20,15 @@ public sealed record ExportedFile(string Path, long Rows, IReadOnlyList<string> 
 /// <summary>Writes rows as a table file.</summary>
 public interface ITableFiles
 {
+    /// <summary>The folder of the working copy exports are written into.</summary>
+    const string Folder = "exports";
+
     /// <summary>Writes the rows, each a JSON object, as columns of their fields into <paramref name="file"/> under <paramref name="copy"/>.</summary>
     Task<Answer<ExportedFile>> WriteAsync(string copy, string file, TableFormat format, IAsyncEnumerable<string> rows, int most, CancellationToken cancellationToken);
 }
+
+/// <summary>An export checked and begun in the journal, whose rows are still to be written.</summary>
+/// <param name="Task">The task it is made for, which owns the job that writes it.</param>
+/// <param name="File">The file it writes, relative to the working copy.</param>
+/// <param name="WriteAsync">Writes the rows and journals how it went, on a token of its own: a job's, which outlives the call.</param>
+public sealed record PreparedExport(string Task, string File, Func<CancellationToken, Task<Answer<ExportedFile>>> WriteAsync);

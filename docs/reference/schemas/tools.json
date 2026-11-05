@@ -220,7 +220,7 @@
   },
   {
     "name": "connector_export",
-    "description": "Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task\u0027s card offers a\nperson to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns\nof their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,\nand at most 1000 columns: the fields past them go into one column, _more, as JSON.",
+    "description": "Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task\u0027s card offers a\nperson to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns\nof their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,\nand at most 1000 columns: the fields past them go into one column, _more, as JSON. The answer comes once the file\nis written; an export still writing when the wait runs out answers with its job, job://connector/export/\u003Cid\u003E,\nwhose resource carries the same answer once the file is there.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -267,6 +267,11 @@
             "null"
           ],
           "default": null
+        },
+        "wait": {
+          "description": "Seconds to wait for the file before answering with the export\u0027s job; 60 when not given, 0 answers with the job at once, at most 900.",
+          "type": "integer",
+          "default": 60
         }
       },
       "required": [

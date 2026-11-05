@@ -79,6 +79,19 @@ public sealed class ProcessContractTests : IAsyncLifetime
         Assert.Equal(11, tools.Count);
     }
 
+    /// <summary>An export outlasting its wait is a job: its resource is offered, and a client is told of its end rather than made to ask.</summary>
+    [Fact]
+    public async Task Initialize_StartedProgram_OffersTheJobsOfItsExports()
+    {
+        using var cancellation = new CancellationTokenSource(Timeout);
+        await using var session = await SessionAsync(null, cancellation.Token);
+
+        var templates = await session.ListResourceTemplatesAsync(cancellationToken: cancellation.Token);
+
+        Assert.True(session.ServerCapabilities.Resources?.Subscribe);
+        Assert.Contains(templates, template => template.UriTemplate.StartsWith("job://connector/", StringComparison.Ordinal));
+    }
+
     /// <summary>The guard rules of every Snail server, on the list a model receives.</summary>
     [Fact]
     public async Task Tools_AsListed_KeepTheGuardRules()

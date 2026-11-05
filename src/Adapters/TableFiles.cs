@@ -32,7 +32,7 @@ namespace Snail.MCP.Connector.Adapters;
 public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
 {
     /// <summary>The folder of the working copy exports are written into.</summary>
-    public const string Folder = "exports";
+    public const string Folder = ITableFiles.Folder;
 
     /// <summary>The column the fields past the most columns go into, as one JSON object.</summary>
     public const string More = "_more";

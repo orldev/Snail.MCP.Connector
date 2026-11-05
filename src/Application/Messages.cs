@@ -207,6 +207,24 @@ public static class Messages
     /// <summary>The sources a listing left out, each with why: a secret that lacks what it needs is named, not dropped silently.</summary>
     public static string SourcesUnread(IReadOnlyList<string> said) => $"Left out of the list: {string.Join(" ", said)}";
 
+    /// <summary>A wait outside what a call may ask for.</summary>
+    public static string WaitOutside(int wait, int longest) => $"wait was {wait}; a call may wait from 0 to {longest} seconds.";
+
+    /// <summary>What to do about it.</summary>
+    public const string WaitOutsideHint = "Leave wait out: the export answers within a minute, or as the job writing it.";
+
+    /// <summary>An export still being written when the wait ran out.</summary>
+    public static string ExportRunning(string file) => $"The rows are still being written: {file} appears in the working copy once they are, and the journal holds the export either way. Name the file in your answer; it is there by the time a person opens the task.";
+
+    /// <summary>An export the server stopped before it ended.</summary>
+    public static string ExportStopped(string? why) => $"The export was stopped before it ended: {why ?? "the server was stopping"}. No file was left in the working copy.";
+
+    /// <summary>An export whose work broke past every answer it gives.</summary>
+    public static string ExportBroke(string? why) => $"The export broke: {why ?? "no reason was given"}.";
+
+    /// <summary>What to do about a stopped or broken export.</summary>
+    public const string ExportAgainHint = "Make the export again; narrow it if it was large.";
+
     /// <summary>A source whose secret lacks what it needs.</summary>
     public static string SourceIncomplete(string name, string key) => $"The source \"{name}\" is declared without {key}.";
 }

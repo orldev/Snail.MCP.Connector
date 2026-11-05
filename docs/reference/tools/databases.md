@@ -286,7 +286,9 @@ For MongoDB sources use connector_find and connector_aggregate.
 Write rows into a csv or xlsx file of the task, under exports/ of the working copy, which the task's card offers a
 person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
 of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,
-and at most 1000 columns: the fields past them go into one column, _more, as JSON.
+and at most 1000 columns: the fields past them go into one column, _more, as JSON. The answer comes once the file
+is written; an export still writing when the wait runs out answers with its job, job://connector/export/&lt;id&gt;,
+whose resource carries the same answer once the file is there.
 
 *only adds · repeat-safe · stays on this machine.*
 
@@ -299,6 +301,7 @@ and at most 1000 columns: the fields past them go into one column, _more, as JSO
 | `filter` | `string?` | — | `null` | Which documents, as MongoDB Extended JSON, such as {"status": "paid", "total": {"$gt": 100}}; dates as {"$date": "2026-01-31T00:00:00Z"}, ids as {"$oid": "…"}; empty matches every one. |
 | `pipeline` | `string?` | — | `null` | For MongoDB, the stages as a JSON array, when the rows come from a pipeline rather than a filter. |
 | `select` | `string?` | — | `null` | For SQL, the SELECT whose rows the file holds; not used for MongoDB. |
+| `wait` | `integer` | — | `60` | Seconds to wait for the file before answering with the export's job; 60 when not given, 0 answers with the job at once, at most 900. |
 
 <details><summary>JSON Schema</summary>
 
@@ -349,6 +352,11 @@ and at most 1000 columns: the fields past them go into one column, _more, as JSO
         "null"
       ],
       "default": null
+    },
+    "wait": {
+      "description": "Seconds to wait for the file before answering with the export\u0027s job; 60 when not given, 0 answers with the job at once, at most 900.",
+      "type": "integer",
+      "default": 60
     }
   },
   "required": [

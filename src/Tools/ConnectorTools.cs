@@ -2,12 +2,13 @@ using System.ComponentModel;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting.Jobs;
 
 namespace Snail.MCP.Connector.Tools;
 
 /// <summary>The company's databases, read for the task: the sources, their shape, their rows, their exports and the journal of what was asked.</summary>
 [McpServerToolType]
-public sealed class ConnectorTools(Queries queries)
+public sealed class ConnectorTools(Queries queries, Jobs jobs)
 {
     /// <summary>Lists the sources.</summary>
     [McpServerTool(Name = "connector_sources", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -70,7 +71,12 @@ public sealed class ConnectorTools(Queries queries)
         CancellationToken cancellationToken = default) =>
         ToolResponse.From(await queries.QueryAsync(source, select, limit, cancellationToken));
 
-    /// <summary>Writes rows into a table file of the task.</summary>
+    /// <summary>Writes rows into a table file of the task, answered within the wait or as the job writing it.</summary>
+    /// <remarks>
+    /// The export is checked and begun in the journal while the call is served; its rows are written by a job of the
+    /// task, which a client that can wait follows through the job's resource, so no model is made to ask again. A call
+    /// given up stops the waiting, not the export: the file still lands in the copy, and the journal says so.
+    /// </remarks>
     [McpServerTool(Name = "connector_export", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(ToolDescriptions.Export)]
     public async Task<CallToolResult> ExportAsync(
@@ -81,8 +87,24 @@ public sealed class ConnectorTools(Queries queries)
         [Description(ToolDescriptions.Filter)] string? filter = null,
         [Description(ToolDescriptions.ExportPipeline)] string? pipeline = null,
         [Description(ToolDescriptions.ExportSelect)] string? select = null,
-        CancellationToken cancellationToken = default) =>
-        ToolResponse.From(await queries.ExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken));
+        [Description(ToolDescriptions.ExportWait)] int wait = 60,
+        CancellationToken cancellationToken = default)
+    {
+        if (wait is < 0 or > ToolDescriptions.LongestWait)
+            return ToolResponse.Failure(Messages.WaitOutside(wait, ToolDescriptions.LongestWait), Messages.WaitOutsideHint);
+
+        var prepared = await queries.PrepareExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken);
+        if (prepared.Value is not { } export)
+            return ToolResponse.Failure(prepared.Error!, prepared.Hint);
+
+        var job = jobs.Start(Export, export.Task, async (_, token) => ToolResponse.Outcome(await export.WriteAsync(token)), ConnectorJson.Default.JsonObject);
+        var report = await job.ForAsync(TimeSpan.FromSeconds(wait), cancellationToken);
+
+        return ToolResponse.Exported(report, export.File);
+    }
+
+    /// <summary>The kind of an export's job, the middle of its URI: <c>job://connector/export/&lt;id&gt;</c>.</summary>
+    public const string Export = "export";
 
     /// <summary>Reads the queries this task made.</summary>
     [McpServerTool(Name = "connector_journal", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

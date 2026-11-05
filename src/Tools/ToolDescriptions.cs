@@ -73,8 +73,16 @@ public static class ToolDescriptions
         Write rows into a {Formats} file of the task, under exports/ of the working copy, which the task's card offers a
         person to download. For MongoDB, give a collection and either a filter or a pipeline; nested fields become columns
         of their dotted paths. For SQL, give a select. An export writes at most 100000 rows and says when it stopped there,
-        and at most 1000 columns: the fields past them go into one column, _more, as JSON.
+        and at most 1000 columns: the fields past them go into one column, _more, as JSON. The answer comes once the file
+        is written; an export still writing when the wait runs out answers with its job, job://connector/export/<id>,
+        whose resource carries the same answer once the file is there.
         """;
+
+    /// <summary>The longest wait a call of connector_export may ask for, in seconds.</summary>
+    public const int LongestWait = 900;
+
+    /// <summary>The wait parameter of connector_export.</summary>
+    public const string ExportWait = "Seconds to wait for the file before answering with the export's job; 60 when not given, 0 answers with the job at once, at most 900.";
 
     /// <summary>The collection parameter of connector_export.</summary>
     public const string ExportCollection = "For MongoDB, the collection, as connector_schema lists it; not used for SQL.";

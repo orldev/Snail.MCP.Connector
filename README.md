@@ -95,6 +95,14 @@ row's fields go into one column, `_more`, as JSON. A workbook cell is a number o
 postal code `08001` stays text — and a CSV cell of text that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`)
 starts with an apostrophe.
 
+An export is a job of its task (`Snail.Sdk.Mcp.Hosting` jobs): it is checked and begun in the journal while the call is
+served, and its rows are written by the job. The call takes `wait` (60 seconds unless given, 0 to 900) and answers with
+the file when it is written within it, or with the job, `job://connector/export/<id>`, whose resource carries the same
+answer once the file is there. The server offers `resources.subscribe`, so a client that can wait — the platform's
+worker through `Snail.Sdk.Mcp.JobClient` — is told of the end, and no model is asked to call again. The job belongs to
+the task the address names, not to the session: a step that connects again still reads it, a step of another task
+does not. A call given up stops the waiting, not the export; a server stopping cancels it, and no file is left.
+
 The journal is one JSON-lines file a day, and the same line in a file of the task's own, which `connector_journal`
 reads; both go after `JOURNAL_DAYS`. A query whose answer the server could not read — a value .NET has no type for, a
 document too deep — is answered as such and journaled like any other; a value a SQL driver cannot carry into .NET (an

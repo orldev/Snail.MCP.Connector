@@ -59,6 +59,9 @@ internal sealed class Fakes
 
     public string? Root { get; set; } = $"/workspaces/{TaskId}/step-0";
 
+    /// <summary>Holds every export before its first row until a test lets it go; none when exports run straight through.</summary>
+    public TaskCompletionSource? Held { get; set; }
+
     public Queries Queries()
     {
         var options = Options.Create(new ConnectorOptions());
@@ -68,7 +71,7 @@ internal sealed class Fakes
 
         var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
 
-        return new Queries(new SourceList(Sources), Database, Tables, Written, new NoFiles(), copy, TimeProvider.System, options);
+        return new Queries(new SourceList(Sources), Database, Tables, Written, new NoFiles(this), copy, TimeProvider.System, options);
     }
 
     internal sealed class SourceList(Dictionary<string, ReachableSource> sources) : ISources
@@ -217,10 +220,13 @@ internal sealed class Fakes
             Task.FromResult<IReadOnlyList<QueryRecord>>([.. Records.Where(record => record.Task == task).Reverse().Take(most)]);
     }
 
-    private sealed class NoFiles : ITableFiles
+    private sealed class NoFiles(Fakes fakes) : ITableFiles
     {
         public async Task<Answer<ExportedFile>> WriteAsync(string copy, string file, TableFormat format, IAsyncEnumerable<string> rows, int most, CancellationToken cancellationToken)
         {
+            if (fakes.Held is { } held)
+                await held.Task.WaitAsync(cancellationToken);
+
             int count = 0;
             await foreach (string row in rows.WithCancellation(cancellationToken))
                 count++;

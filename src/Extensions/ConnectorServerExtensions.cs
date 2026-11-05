@@ -1,5 +1,7 @@
+using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Configuration;
 using Snail.MCP.Connector.Tools;
+using Snail.Sdk.Mcp.Hosting.Jobs;
 using Snail.Sdk.Mcp.Http;
 
 namespace Snail.MCP.Connector.Extensions;
@@ -35,11 +37,19 @@ public static class ConnectorServerExtensions
                 .WithLocalHttpTransport()
                 .WithTools<ConnectorTools>()
                 .WithTools<WriteTools>()
-                .WithTools<DiagnosticsTools>();
+                .WithTools<DiagnosticsTools>()
+                .WithJobs(Short, OwnerOf);
 
             return builder;
         }
     }
+
+    /// <summary>The server's short name, the first part of every job's URI.</summary>
+    public const string Short = "connector";
+
+    /// <summary>The owner of a request's jobs: the task its address names, so a step reads only its own task's exports, whichever session it opened.</summary>
+    /// <remarks>A worker that connects again opens a new session; owned by the session, the export it was writing would be unknown to it.</remarks>
+    private static string? OwnerOf(IServiceProvider services) => services.GetService<SessionCopy>()?.Current().Value?.Task;
 
     extension(WebApplication app)
     {

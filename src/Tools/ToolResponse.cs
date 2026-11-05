@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Application.Ports;
+using Snail.Sdk.Mcp.Hosting.Jobs;
 
 namespace Snail.MCP.Connector.Tools;
 
@@ -57,14 +58,46 @@ public static class ToolResponse
     public static CallToolResult From(Answer<long> answer) => Of(answer, count => new JsonObject { ["count"] = count });
 
     /// <summary>A written export.</summary>
-    public static CallToolResult From(Answer<ExportedFile> answer) =>
-        Of(answer, file => new JsonObject
+    public static CallToolResult From(Answer<ExportedFile> answer) => Of(answer, Data);
+
+    /// <summary>An export's outcome as its job keeps it: the answer the tool gives, ok with the file or the refusal.</summary>
+    public static JsonObject Outcome(Answer<ExportedFile> answer) =>
+        answer.Value is { } file
+            ? new JsonObject { ["ok"] = true, ["data"] = Data(file) }
+            : Refusal(answer.Error!, answer.Hint);
+
+    /// <summary>The tool result of an export's job as it stands, with the job's report beside it.</summary>
+    /// <param name="report">The job, ended or still running.</param>
+    /// <param name="file">The file it writes, for an answer given while it runs.</param>
+    public static CallToolResult Exported(JobReport report, string file) => JobAnswer.Of(report, standing => Said(standing, file));
+
+    private static CallToolResult Said(JobReport report, string file)
+    {
+        if (report.IsRunning)
         {
-            ["file"] = file.Path,
-            ["rows"] = file.Rows,
-            ["columns"] = new JsonArray([.. file.Columns.Select(column => JsonValue.Create(column))]),
-            ["cut"] = file.IsCut
-        });
+            var running = new JsonObject { ["job"] = report.Uri, ["state"] = Word(report.State), ["file"] = file, ["note"] = Messages.ExportRunning(file) };
+
+            return new CallToolResult { Content = [new TextContentBlock { Text = new JsonObject { ["ok"] = true, ["data"] = running }.ToJsonString(Options) }] };
+        }
+
+        if (report.State is JobState.Cancelled)
+            return Failure(Messages.ExportStopped(report.Message), Messages.ExportAgainHint);
+
+        if (report.State is not JobState.Succeeded || report.Result is not { } result || JsonNode.Parse(result.GetRawText()) is not JsonObject told)
+            return Failure(Messages.ExportBroke(report.Message), Messages.ExportAgainHint);
+
+        bool isOk = told["ok"]?.GetValue<bool>() is true;
+
+        return new CallToolResult { IsError = !isOk, Content = [new TextContentBlock { Text = told.ToJsonString(Options) }] };
+    }
+
+    private static JsonObject Data(ExportedFile file) => new()
+    {
+        ["file"] = file.Path,
+        ["rows"] = file.Rows,
+        ["columns"] = new JsonArray([.. file.Columns.Select(column => JsonValue.Create(column))]),
+        ["cut"] = file.IsCut
+    };
 
     /// <summary>The task's queries.</summary>
     public static CallToolResult From(Answer<IReadOnlyList<QueryRecord>> answer) =>

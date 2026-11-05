@@ -125,59 +125,80 @@ public sealed partial class Queries(
     /// <summary>Writes the rows of a filter or a pipeline, or of a SELECT on a SQL source, into a CSV or Excel file in the task's working copy.</summary>
     public async Task<Answer<ExportedFile>> ExportAsync(string source, string? collection, string? filter, string? pipeline, string? select, string format, string file, CancellationToken cancellationToken)
     {
+        var prepared = await PrepareExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken);
+        if (prepared.Value is not { } export)
+            return Answer.Failed<ExportedFile>(prepared.Error!, prepared.Hint);
+
+        return await export.WriteAsync(cancellationToken);
+    }
+
+    /// <summary>An export checked and begun in the journal, its rows still to be written; or why it may not be made.</summary>
+    /// <remarks>
+    /// Everything the session's address decides — the task, its copy — is read here, while the call is being served: the
+    /// rows are written by a job that outlives the call, and the address is no longer there to read by then.
+    /// </remarks>
+    public async Task<Answer<PreparedExport>> PrepareExportAsync(string source, string? collection, string? filter, string? pipeline, string? select, string format, string file, CancellationToken cancellationToken)
+    {
         var reached = await ReachAsync(source, collection, Engine.Any, cancellationToken);
         if (reached.Value is not { } context)
-            return Answer.Failed<ExportedFile>(reached.Error!, reached.Hint);
+            return Answer.Failed<PreparedExport>(reached.Error!, reached.Hint);
 
         if (!Enum.TryParse(format, ignoreCase: true, out TableFormat table) || !Enum.IsDefined(table))
-            return Answer.Failed<ExportedFile>(Messages.BadFormat);
+            return Answer.Failed<PreparedExport>(Messages.BadFormat);
 
         if (!FileName().IsMatch(file))
-            return Answer.Failed<ExportedFile>(Messages.BadFileName);
+            return Answer.Failed<PreparedExport>(Messages.BadFileName);
 
         string name = Path.HasExtension(file) ? file : $"{file}.{table.ToString().ToLowerInvariant()}";
 
         return context.Source.Source.Kind is SourceKind.MongoDb
-            ? await ExportDocumentsAsync(context, collection ?? string.Empty, filter, pipeline, table, name, cancellationToken)
-            : await ExportTablesAsync(context, select, table, name, cancellationToken);
+            ? await PrepareDocumentsAsync(context, collection ?? string.Empty, filter, pipeline, table, name, cancellationToken)
+            : await PrepareTablesAsync(context, select, table, name, cancellationToken);
     }
 
-    private async Task<Answer<ExportedFile>> ExportDocumentsAsync(QueryContext context, string collection, string? filter, string? pipeline, TableFormat table, string name, CancellationToken cancellationToken)
+    private async Task<Answer<PreparedExport>> PrepareDocumentsAsync(QueryContext context, string collection, string? filter, string? pipeline, TableFormat table, string name, CancellationToken cancellationToken)
     {
         if (collection.Length == 0 || string.IsNullOrWhiteSpace(filter) == string.IsNullOrWhiteSpace(pipeline))
-            return Answer.Failed<ExportedFile>(Messages.OneQuery);
+            return Answer.Failed<PreparedExport>(Messages.OneQuery);
 
         var checkedFilter = QueryRules.Document(filter, "filter");
         var checkedPipeline = pipeline is null ? Answer.Ok(new JsonArray()) : QueryRules.Pipeline(pipeline, context.Source.Source);
         if (checkedFilter.Value is null || checkedPipeline.Value is null)
-            return Answer.Failed<ExportedFile>((checkedFilter.Error ?? checkedPipeline.Error)!, checkedFilter.Hint ?? checkedPipeline.Hint);
+            return Answer.Failed<PreparedExport>((checkedFilter.Error ?? checkedPipeline.Error)!, checkedFilter.Hint ?? checkedPipeline.Hint);
 
         var query = new DocumentQuery(collection, checkedFilter.Value.ToJsonString(), null, null, Limit(null));
         string? stages = pipeline is null ? null : checkedPipeline.Value.ToJsonString();
         string recorded = new JsonObject { ["filter"] = checkedFilter.Value.DeepClone(), ["pipeline"] = checkedPipeline.Value.DeepClone(), ["file"] = name }.ToJsonString();
         if (!await IsStartedAsync(context, collection, recorded, cancellationToken))
-            return Answer.Failed<ExportedFile>(Messages.JournalDown, Messages.JournalDownHint);
+            return Answer.Failed<PreparedExport>(Messages.JournalDown, Messages.JournalDownHint);
 
-        var rows = documents.StreamAsync(context.Source, query, stages, options.Value.MostExportRows, cancellationToken);
+        return Answer.Ok(new PreparedExport(context.Copy.Task, $"{ITableFiles.Folder}/{name}", token =>
+        {
+            var rows = documents.StreamAsync(context.Source, query, stages, options.Value.MostExportRows, token);
 
-        return await RecordedAsync(context, collection, "export", recorded,
-            () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, cancellationToken), exported => exported.Rows, cancellationToken);
+            return RecordedAsync(context, collection, "export", recorded,
+                () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, token), exported => exported.Rows, token);
+        }));
     }
 
-    private async Task<Answer<ExportedFile>> ExportTablesAsync(QueryContext context, string? select, TableFormat table, string name, CancellationToken cancellationToken)
+    private async Task<Answer<PreparedExport>> PrepareTablesAsync(QueryContext context, string? select, TableFormat table, string name, CancellationToken cancellationToken)
     {
         var checkedSelect = SqlRules.Select(select, context.Source.Source);
         if (checkedSelect.Value is not { } statement)
-            return Answer.Failed<ExportedFile>(checkedSelect.Error!, checkedSelect.Hint);
+            return Answer.Failed<PreparedExport>(checkedSelect.Error!, checkedSelect.Hint);
 
+        string collection = Journaled(statement, context.Source.Source.Kind);
         string recorded = new JsonObject { ["select"] = statement, ["file"] = name }.ToJsonString();
-        if (!await IsStartedAsync(context, Journaled(statement, context.Source.Source.Kind), recorded, cancellationToken))
-            return Answer.Failed<ExportedFile>(Messages.JournalDown, Messages.JournalDownHint);
+        if (!await IsStartedAsync(context, collection, recorded, cancellationToken))
+            return Answer.Failed<PreparedExport>(Messages.JournalDown, Messages.JournalDownHint);
 
-        var rows = tables.StreamAsync(context.Source, statement, options.Value.MostExportRows, cancellationToken);
+        return Answer.Ok(new PreparedExport(context.Copy.Task, $"{ITableFiles.Folder}/{name}", token =>
+        {
+            var rows = tables.StreamAsync(context.Source, statement, options.Value.MostExportRows, token);
 
-        return await RecordedAsync(context, Journaled(statement, context.Source.Source.Kind), "export", recorded,
-            () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, cancellationToken), exported => exported.Rows, cancellationToken);
+            return RecordedAsync(context, collection, "export", recorded,
+                () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, token), exported => exported.Rows, token);
+        }));
     }
 
     /// <summary>The tables a SELECT reads, as the journal's collection; <c>*</c> when it names none.</summary>
