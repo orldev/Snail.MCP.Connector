@@ -150,6 +150,18 @@ public static class Messages
     /// <summary>A proposal that already ran.</summary>
     public const string AlreadyApplied = "This proposal already ran; a write runs once.";
 
+    /// <summary>A proposal another call is running, or one whose run was cut off before it ended.</summary>
+    public const string BeingApplied = "This proposal is being applied by another call, or its run was cut off before it ended; it is not run twice.";
+
+    /// <summary>A query whose answer the server could not read.</summary>
+    public static string Unreadable(string what) => $"The query ran, but its answer could not be read ({what}); nothing of it is returned.";
+
+    /// <summary>What to do about it.</summary>
+    public const string UnreadableHint = "Cast the values the database answers with to text or a plain number in the query, or leave out the field that cannot be read.";
+
+    /// <summary>What to do about it.</summary>
+    public const string BeingAppliedHint = "Wait for the other call. If none is running, ask a person on the stand to look at the data before anything is proposed again.";
+
     /// <summary>A proposal past its days.</summary>
     public static string Expired(int days) => $"This proposal is older than {days} days and can no longer be applied: propose it again.";
 

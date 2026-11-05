@@ -70,7 +70,7 @@ public sealed partial class Queries(
         if (checkedSelect.Value is not { } statement)
             return Answer.Failed<RowPage>(checkedSelect.Error!, checkedSelect.Hint);
 
-        return await RecordedAsync(context, Journaled(statement), "query", statement, () => tables.QueryAsync(context.Source, statement, Limit(limit), cancellationToken), page => page.Rows.Count, cancellationToken);
+        return await RecordedAsync(context, Journaled(statement, context.Source.Source.Kind), "query", statement, () => tables.QueryAsync(context.Source, statement, Limit(limit), cancellationToken), page => page.Rows.Count, cancellationToken);
     }
 
     /// <summary>The documents a filter matches.</summary>
@@ -155,6 +155,9 @@ public sealed partial class Queries(
         var query = new DocumentQuery(collection, checkedFilter.Value.ToJsonString(), null, null, Limit(null));
         string? stages = pipeline is null ? null : checkedPipeline.Value.ToJsonString();
         string recorded = new JsonObject { ["filter"] = checkedFilter.Value.DeepClone(), ["pipeline"] = checkedPipeline.Value.DeepClone(), ["file"] = name }.ToJsonString();
+        if (!await IsStartedAsync(context, collection, recorded, cancellationToken))
+            return Answer.Failed<ExportedFile>(Messages.JournalDown, Messages.JournalDownHint);
+
         var rows = documents.StreamAsync(context.Source, query, stages, options.Value.MostExportRows, cancellationToken);
 
         return await RecordedAsync(context, collection, "export", recorded,
@@ -168,15 +171,18 @@ public sealed partial class Queries(
             return Answer.Failed<ExportedFile>(checkedSelect.Error!, checkedSelect.Hint);
 
         string recorded = new JsonObject { ["select"] = statement, ["file"] = name }.ToJsonString();
+        if (!await IsStartedAsync(context, Journaled(statement, context.Source.Source.Kind), recorded, cancellationToken))
+            return Answer.Failed<ExportedFile>(Messages.JournalDown, Messages.JournalDownHint);
+
         var rows = tables.StreamAsync(context.Source, statement, options.Value.MostExportRows, cancellationToken);
 
-        return await RecordedAsync(context, Journaled(statement), "export", recorded,
+        return await RecordedAsync(context, Journaled(statement, context.Source.Source.Kind), "export", recorded,
             () => files.WriteAsync(context.Copy.Path, name, table, rows, options.Value.MostExportRows, cancellationToken), exported => exported.Rows, cancellationToken);
     }
 
     /// <summary>The tables a SELECT reads, as the journal's collection; <c>*</c> when it names none.</summary>
-    private static string Journaled(string statement) =>
-        SqlRules.Read(statement) is { Count: > 0 } read ? string.Join(", ", read) : Source.Every;
+    private static string Journaled(string statement, SourceKind kind) =>
+        SqlRules.Read(statement, kind) is { Count: > 0 } read ? string.Join(", ", read) : Source.Every;
 
     /// <summary>The newest queries of this session's task, for an agent to see what it already asked.</summary>
     public async Task<Answer<IReadOnlyList<QueryRecord>>> JournalAsync(int most, CancellationToken cancellationToken)
@@ -211,10 +217,21 @@ public sealed partial class Queries(
         return Answer.Ok(new QueryContext(source, current));
     }
 
+    /// <summary>Writes into the journal that an export begins, before any of its rows reach the task's copy; false when the journal could not hold it.</summary>
+    /// <remarks>Journaled only after the file was written, an export the journal refused left its rows in the copy all the same (audit of 30.10.2026).</remarks>
+    private async Task<bool> IsStartedAsync(QueryContext context, string collection, string query, CancellationToken cancellationToken)
+    {
+        var record = new QueryRecord(clock.GetUtcNow(), context.Copy.Task, context.Source.Source.Name, collection, "exporting", query, 0, 0, null);
+        var written = await journal.WriteAsync(record, cancellationToken);
+
+        return written.Error is null;
+    }
+
+    /// <summary>Runs the query and writes it into the journal, the answer withheld when the journal cannot hold it.</summary>
     private async Task<Answer<T>> RecordedAsync<T>(QueryContext context, string collection, string operation, string query, Func<Task<Answer<T>>> run, Func<T, long> rows, CancellationToken cancellationToken)
     {
         long started = clock.GetTimestamp();
-        var answer = await run();
+        var answer = await RunAsync(run);
         long milliseconds = (long)clock.GetElapsedTime(started).TotalMilliseconds;
 
         var record = new QueryRecord(clock.GetUtcNow(), context.Copy.Task, context.Source.Source.Name, collection, operation, query,
@@ -223,6 +240,24 @@ public sealed partial class Queries(
         var written = await journal.WriteAsync(record, cancellationToken);
 
         return written.Error is null ? answer : Answer.Failed<T>(Messages.JournalDown, Messages.JournalDownHint);
+    }
+
+    /// <summary>The adapter's answer; one that broke its promise to answer in data, as a failed answer the journal takes like any other.</summary>
+    /// <remarks>
+    /// The adapters answer in data; this is where that promise is kept when one of them does not. A value Npgsql cannot
+    /// read, a document deeper than the JSON reader goes, threw past the journal: the query a company would want to see
+    /// was the one missing from it.
+    /// </remarks>
+    private static async Task<Answer<T>> RunAsync<T>(Func<Task<Answer<T>>> run)
+    {
+        try
+        {
+            return await run();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Answer.Failed<T>(Messages.Unreadable(exception.GetType().Name), Messages.UnreadableHint);
+        }
     }
 
     private RowLimit Limit(int? asked) =>

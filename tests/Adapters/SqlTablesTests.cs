@@ -288,12 +288,15 @@ public sealed class PostgresTablesTests(PostgresFixture postgres) : SqlTablesTes
 
     protected override string Slow => "SELECT pg_sleep(5)";
 
+    /// <summary>A write never runs: read as a subquery it is not even a statement, and the transaction around it is read-only besides.</summary>
     [Fact]
-    public async Task QueryAsync_Write_IsRefusedByTheReadOnlyTransaction()
+    public async Task QueryAsync_Write_IsRefusedAndChangesNothing()
     {
         var page = await _tables.QueryAsync(postgres.Source, "UPDATE orders SET city = 'Lugo'", new RowLimit(10, 65536, 30), CancellationToken.None);
 
-        Assert.Contains("read-only", page.Error, StringComparison.Ordinal);
+        var counted = await _tables.QueryAsync(postgres.Source, "SELECT count(*) AS n FROM orders WHERE city = 'Lugo'", new RowLimit(10, 65536, 30), CancellationToken.None);
+        Assert.NotNull(page.Error);
+        Assert.Equal("""{"n":0}""", Assert.Single(counted.Value!.Rows));
     }
 }
 

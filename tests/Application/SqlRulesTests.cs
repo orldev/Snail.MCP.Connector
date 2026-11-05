@@ -16,6 +16,18 @@ public sealed class SqlRulesTests
     public void Select_ReadOfAllowedTables_IsAccepted(string statement) =>
         Assert.NotNull(SqlRules.Select(statement, Ledger).Value);
 
+    /// <summary>The quoting each engine reads stays legal: what the rules learned to read is not refused for being there.</summary>
+    [Theory]
+    [InlineData(SourceKind.PostgreSql, """SELECT "Total Due", note FROM orders""")]
+    [InlineData(SourceKind.PostgreSql, """SELECT E'it\'s' AS said, total FROM orders""")]
+    [InlineData(SourceKind.PostgreSql, "SELECT $$a 'quoted' word$$ AS said FROM orders")]
+    [InlineData(SourceKind.PostgreSql, "SELECT $tag$x$tag$ AS said FROM orders")]
+    [InlineData(SourceKind.PostgreSql, "SELECT data['city'] FROM orders WHERE total > $1")]
+    [InlineData(SourceKind.SqlServer, "SELECT [Total Due], [it's] FROM orders")]
+    [InlineData(SourceKind.SqlServer, "SELECT N'Ñandú' AS said FROM [dbo].[orders]")]
+    public void Select_QuotingOfTheEngine_IsAccepted(SourceKind kind, string statement) =>
+        Assert.NotNull(SqlRules.Select(statement, Ledger with { Kind = kind }).Value);
+
     [Theory]
     [InlineData("INSERT INTO orders VALUES (1)", null)]
     [InlineData("SELECT * INTO copy FROM orders", "INTO")]
@@ -59,7 +71,7 @@ public sealed class SqlRulesTests
 
     [Fact]
     public void Read_JoinWithCte_NamesTheTablesOnceAndNotTheCte() =>
-        Assert.Equal(["public.orders", "customers"], SqlRules.Read("WITH paid AS (SELECT * FROM public.orders) SELECT * FROM paid JOIN customers c ON true JOIN public.orders o ON true"));
+        Assert.Equal(["public.orders", "customers"], SqlRules.Read("WITH paid AS (SELECT * FROM public.orders) SELECT * FROM paid JOIN customers c ON true JOIN public.orders o ON true", SourceKind.PostgreSql));
 
     [Theory]
     [InlineData("""{"id": 7}""")]
@@ -114,7 +126,7 @@ public sealed class SqlRulesTests
 
     [Fact]
     public void Read_FromList_NamesEveryTable() =>
-        Assert.Equal(["orders", "customers"], SqlRules.Read("SELECT * FROM orders o, customers AS c WHERE o.c = c.id"));
+        Assert.Equal(["orders", "customers"], SqlRules.Read("SELECT * FROM orders o, customers AS c WHERE o.c = c.id", SourceKind.PostgreSql));
 
     /// <summary>SQL Server keeps a table's case as written; the statement and the allowed list may differ in it.</summary>
     [Theory]

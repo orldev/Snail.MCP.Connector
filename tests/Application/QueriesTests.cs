@@ -166,7 +166,7 @@ public sealed class QueriesTests
         var exported = await _fakes.Queries().ExportAsync("sales", "orders", """{"status": "paid"}""", null, null, "xlsx", "paid", CancellationToken.None);
 
         Assert.Equal("exports/paid.xlsx", exported.Value!.Path);
-        Assert.Equal("export", Assert.Single(_fakes.Written.Records).Operation);
+        Assert.Equal(["exporting", "export"], _fakes.Written.Records.Select(record => record.Operation));
     }
 
     [Fact]

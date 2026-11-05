@@ -120,7 +120,7 @@ public static partial class SqlWriteRules
     {
         try
         {
-            return JsonNode.Parse(text ?? string.Empty);
+            return JsonNode.Parse(text ?? string.Empty, documentOptions: QueryRules.Strict);
         }
         catch (JsonException)
         {

@@ -28,6 +28,9 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
 
     private static readonly JsonWriterSettings Relaxed = new() { OutputMode = JsonOutputMode.RelaxedExtendedJson };
 
+    /// <summary>Deep enough for any document: BSON nests a hundred levels, the JSON reader's default stops at sixty-four.</summary>
+    private static readonly JsonDocumentOptions Nested = new() { MaxDepth = 128 };
+
     private const int Depth = 4;
 
     private const int ExampleLength = 60;
@@ -196,7 +199,7 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
     /// repeats to a person as it is. Read back and written again, the same number is 7533.7, and the line loses the spaces
     /// the driver puts around every colon, so more rows fit in an answer's bytes.
     /// </remarks>
-    public static string Row(BsonDocument document) => Tidied(JsonNode.Parse(document.ToJson(Relaxed)))?.ToJsonString() ?? "{}";
+    public static string Row(BsonDocument document) => Tidied(JsonNode.Parse(document.ToJson(Relaxed), documentOptions: Nested))?.ToJsonString() ?? "{}";
 
     private static JsonNode? Tidied(JsonNode? node)
     {
@@ -276,7 +279,7 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
         {
             return Answer.Failed<T>(Messages.TooSlow(seconds), Messages.TooSlowHint);
         }
-        catch (Exception exception) when (exception is MongoException or TimeoutException or FormatException or BsonException or InvalidOperationException)
+        catch (Exception exception) when (exception is MongoException or TimeoutException or FormatException or BsonException or InvalidOperationException or JsonException)
         {
             return Answer.Failed<T>(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), Messages.ExtendedJsonHint);
         }

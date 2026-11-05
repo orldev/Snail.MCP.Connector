@@ -18,6 +18,10 @@ public static class QueryRules
 
     private static readonly string[] Joining = ["$lookup", "$graphLookup", "$unionWith"];
 
+    /// <summary>How an agent's JSON is read: a key written twice is refused, so no reader of it can keep the other one.</summary>
+    /// <remarks>Read leniently, a <c>$lookup</c> with its <c>from</c> written twice threw an ArgumentException past every rule (audit of 30.10.2026).</remarks>
+    internal static readonly JsonDocumentOptions Strict = new() { AllowDuplicateProperties = false };
+
     /// <summary>The filter, projection or sort as an object, or why it is not one this server runs.</summary>
     public static Answer<JsonObject> Document(string? text, string what)
     {
@@ -102,7 +106,7 @@ public static class QueryRules
     {
         try
         {
-            return JsonNode.Parse(text);
+            return JsonNode.Parse(text, documentOptions: Strict);
         }
         catch (JsonException)
         {

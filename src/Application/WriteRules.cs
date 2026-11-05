@@ -59,7 +59,7 @@ public static class WriteRules
         JsonNode? parsed;
         try
         {
-            parsed = JsonNode.Parse(text ?? string.Empty);
+            parsed = JsonNode.Parse(text ?? string.Empty, documentOptions: QueryRules.Strict);
         }
         catch (JsonException)
         {

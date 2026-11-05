@@ -21,8 +21,10 @@ public sealed class Writes(
     IQueryJournal journal,
     SessionCopy copy,
     TimeProvider clock,
-    IOptions<ConnectorOptions> options)
+    IOptions<ConnectorOptions> options) : IDisposable
 {
+    private readonly SemaphoreSlim _deciding = new(1, 1);
+
     /// <summary>Dry-runs the write and keeps it as a proposal for a person to decide.</summary>
     public async Task<Answer<WriteProposal>> ProposeAsync(string source, string collection, string operation, string? filter, string? change, string reason, CancellationToken cancellationToken)
     {
@@ -56,39 +58,31 @@ public sealed class Writes(
     }
 
     /// <summary>Runs an allowed proposal of this session's task by the writing user.</summary>
+    /// <remarks>
+    /// The proposal is taken — saved as applying — before the database is asked, under the lock every decision takes, so
+    /// a second call made at the same time finds it taken. What the write ended in is saved whatever became of the call
+    /// that asked: a write the database made is never left looking approved. A call cut off during the write leaves the
+    /// proposal applying, which nothing runs again until a person looks at the data.
+    /// </remarks>
     public async Task<Answer<WriteProposal>> ApplyAsync(string id, CancellationToken cancellationToken)
     {
         var place = copy.Current();
         if (place.Value is not { } current)
             return Answer.Failed<WriteProposal>(place.Error!, place.Hint);
 
-        if (await proposals.FindAsync(id.Trim(), cancellationToken) is not { } proposal)
-            return Answer.Failed<WriteProposal>(Messages.NoProposal(id));
+        var claimed = await ClaimAsync(id.Trim(), current.Task, cancellationToken);
+        if (claimed.Value is not { } proposal)
+            return claimed;
 
-        if (!string.Equals(proposal.Task, current.Task, StringComparison.Ordinal))
-            return Answer.Failed<WriteProposal>(Messages.OtherTask);
+        var written = await WrittenAsync(proposal, cancellationToken);
+        await IsRecordedAsync(proposal, "apply", written.Value, written.Error, CancellationToken.None);
 
-        if (Standing(proposal) is { } refused)
-            return refused;
+        var settled = written.Error is null
+            ? proposal with { State = ProposalState.Applied, Written = written.Value }
+            : proposal with { State = ProposalState.Approved };
+        await proposals.SaveAsync(settled, CancellationToken.None);
 
-        var found = await sources.FindAsync(proposal.Source, cancellationToken);
-        if (found.Value is not { } source)
-            return Answer.Failed<WriteProposal>(found.Error!, found.Hint);
-
-        if (!await IsRecordedAsync(proposal, "applying", proposal.Matched, null, cancellationToken))
-            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
-
-        var written = source.Source.Kind is SourceKind.MongoDb
-            ? await documents.WriteAsync(source, proposal, cancellationToken)
-            : await tables.WriteAsync(source, proposal, cancellationToken);
-        await IsRecordedAsync(proposal, "apply", written.Value, written.Error, cancellationToken);
-        if (written.Error is not null)
-            return Answer.Failed<WriteProposal>(written.Error, written.Hint);
-
-        var applied = proposal with { State = ProposalState.Applied, Written = written.Value };
-        await proposals.SaveAsync(applied, cancellationToken);
-
-        return Answer.Ok(applied);
+        return written.Error is null ? Answer.Ok(settled) : Answer.Failed<WriteProposal>(written.Error, written.Hint);
     }
 
     /// <summary>The proposal as the dashboard shows it to a person; null when the key is not the server's.</summary>
@@ -99,22 +93,76 @@ public sealed class Writes(
     /// <remarks>A decision the journal cannot hold is not taken: the answer says so, and the proposal still waits.</remarks>
     public async Task<Answer<WriteProposal>?> DecideAsync(string id, string? key, bool isAllowed, string by, string? comment, CancellationToken cancellationToken)
     {
-        if (!IsKey(key) || await proposals.FindAsync(id.Trim(), cancellationToken) is not { State: ProposalState.Pending } proposal)
+        if (!IsKey(key))
             return null;
 
-        var decided = proposal with
+        await _deciding.WaitAsync(cancellationToken);
+        try
         {
-            State = isAllowed ? ProposalState.Approved : ProposalState.Rejected,
-            DecidedBy = by,
-            DecidedAt = clock.GetUtcNow(),
-            Comment = comment
-        };
-        if (!await IsRecordedAsync(decided, isAllowed ? "approve" : "reject", decided.Matched, null, cancellationToken))
-            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+            if (await proposals.FindAsync(id.Trim(), cancellationToken) is not { State: ProposalState.Pending } proposal)
+                return null;
 
-        await proposals.SaveAsync(decided, cancellationToken);
+            var decided = proposal with
+            {
+                State = isAllowed ? ProposalState.Approved : ProposalState.Rejected,
+                DecidedBy = by,
+                DecidedAt = clock.GetUtcNow(),
+                Comment = comment
+            };
+            if (!await IsRecordedAsync(decided, isAllowed ? "approve" : "reject", decided.Matched, null, cancellationToken))
+                return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
 
-        return Answer.Ok(decided);
+            await proposals.SaveAsync(decided, CancellationToken.None);
+
+            return Answer.Ok(decided);
+        }
+        finally
+        {
+            _deciding.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => _deciding.Dispose();
+
+    /// <summary>The proposal taken to run: this task's, allowed, journaled as applying and saved so, or why it cannot be taken.</summary>
+    private async Task<Answer<WriteProposal>> ClaimAsync(string id, string task, CancellationToken cancellationToken)
+    {
+        await _deciding.WaitAsync(cancellationToken);
+        try
+        {
+            if (await proposals.FindAsync(id, cancellationToken) is not { } proposal)
+                return Answer.Failed<WriteProposal>(Messages.NoProposal(id));
+
+            if (!string.Equals(proposal.Task, task, StringComparison.Ordinal))
+                return Answer.Failed<WriteProposal>(Messages.OtherTask);
+
+            if (Standing(proposal) is { } refused)
+                return refused;
+
+            if (!await IsRecordedAsync(proposal, "applying", proposal.Matched, null, cancellationToken))
+                return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+
+            var applying = proposal with { State = ProposalState.Applying };
+            await proposals.SaveAsync(applying, CancellationToken.None);
+
+            return Answer.Ok(applying);
+        }
+        finally
+        {
+            _deciding.Release();
+        }
+    }
+
+    private async Task<Answer<long>> WrittenAsync(WriteProposal proposal, CancellationToken cancellationToken)
+    {
+        var found = await sources.FindAsync(proposal.Source, cancellationToken);
+        if (found.Value is not { } source)
+            return Answer.Failed<long>(found.Error!, found.Hint);
+
+        return source.Source.Kind is SourceKind.MongoDb
+            ? await documents.WriteAsync(source, proposal, cancellationToken)
+            : await tables.WriteAsync(source, proposal, cancellationToken);
     }
 
     private Answer<WriteProposal>? Standing(WriteProposal proposal) => proposal.State switch
@@ -122,6 +170,7 @@ public sealed class Writes(
         ProposalState.Pending => Answer.Failed<WriteProposal>(Messages.NotDecided, Messages.NotDecidedHint),
         ProposalState.Rejected => Answer.Failed<WriteProposal>(Messages.Refused(proposal.Comment)),
         ProposalState.Applied => Answer.Failed<WriteProposal>(Messages.AlreadyApplied),
+        ProposalState.Applying => Answer.Failed<WriteProposal>(Messages.BeingApplied, Messages.BeingAppliedHint),
         _ when clock.GetUtcNow() - proposal.At > TimeSpan.FromDays(options.Value.ProposalDays) => Answer.Failed<WriteProposal>(Messages.Expired(options.Value.ProposalDays)),
         _ => null
     };

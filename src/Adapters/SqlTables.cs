@@ -19,9 +19,12 @@ namespace Snail.MCP.Connector.Adapters;
 /// <summary>PostgreSQL and SQL Server read by the source's read-only user, inside a transaction that is always rolled back.</summary>
 /// <remarks>
 /// Three walls: the user cannot write, PostgreSQL's transaction is READ ONLY so the database refuses a write itself, and
-/// both are rolled back whatever ran in them. The database stops a statement at the query's seconds (its command
-/// timeout). Rows are read one more than asked, so an answer knows it was cut, and reading stops there rather than
-/// pulling the rest of a large result over the network.
+/// both are rolled back whatever ran in them. On PostgreSQL the statement is read as a subquery with a LIMIT, so it is
+/// one statement whatever its text holds — a COMMIT behind it would have ended the read-only transaction (audit of
+/// 30.10.2026) — and the database stops at the limit itself. The database stops a statement at the query's seconds (its
+/// command timeout). Rows are read one more than asked, so an answer knows it was cut; on SQL Server the command is
+/// cancelled there, as a reader closed without it pulls the rest of the result over the network — 10.4 s for a page of
+/// one row of a hundred million, measured on PostgreSQL before its LIMIT.
 /// </remarks>
 public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITables
 {
@@ -69,7 +72,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
             List<string> rows = [];
             int bytes = 0;
 
-            await using var command = Command(connection, transaction, select, limit.Seconds);
+            await using var command = Command(connection, transaction, Bounded(source.Source.Kind, select, limit.Rows + 1), limit.Seconds);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -77,7 +80,10 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
                 bytes += Encoding.UTF8.GetByteCount(row);
 
                 if (rows.Count == limit.Rows || bytes > limit.Bytes)
+                {
+                    await StopAsync(source.Source.Kind, command, reader);
                     return new RowPage(rows, IsCut: true);
+                }
 
                 rows.Add(row);
             }
@@ -92,7 +98,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await ReadOnlyAsync(source.Source.Kind, connection, cancellationToken);
 
-        await using (var command = Command(connection, transaction, select, 600))
+        await using (var command = Command(connection, transaction, Bounded(source.Source.Kind, select, most + 1), 600))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             int read = 0;
@@ -101,9 +107,12 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
                 read++;
                 yield return Row(reader);
             }
+
+            if (read > most)
+                await StopAsync(source.Source.Kind, command, reader);
         }
 
-        await transaction.RollbackAsync(cancellationToken);
+        await RolledBackAsync(transaction, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -176,9 +185,90 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
         var row = new JsonObject();
 
         for (int index = 0; index < reader.FieldCount; index++)
-            row[reader.GetName(index)] = Value(reader.IsDBNull(index) ? null : reader.GetValue(index));
+            row[reader.GetName(index)] = Cell(reader, index);
 
         return row.ToJsonString();
+    }
+
+    /// <summary>The statement as the engine runs it: on PostgreSQL a subquery cut at <paramref name="rows"/>, on SQL Server as written.</summary>
+    /// <remarks>The text goes inside on lines of its own, so a comment at its end cannot swallow the closing parenthesis.</remarks>
+    public static string Bounded(SourceKind kind, string select, int rows) => kind is SourceKind.PostgreSql
+        ? string.Create(CultureInfo.InvariantCulture, $"SELECT * FROM (\n{select}\n) AS q LIMIT {rows}")
+        : select;
+
+    /// <summary>One value of the row; one .NET cannot hold — an interval of months, a NaN, a number past decimal — as the engine spells it.</summary>
+    /// <remarks>
+    /// <c>age()</c>, the first thing an analysis of overdue invoices writes, answers an interval of months, which Npgsql will
+    /// not read as a TimeSpan; the exception it threw ended the tool call with no answer and no journal line.
+    /// </remarks>
+    private static JsonNode? Cell(DbDataReader reader, int index)
+    {
+        if (reader.IsDBNull(index))
+            return null;
+
+        try
+        {
+            return Value(reader.GetValue(index));
+        }
+        catch (Exception exception) when (exception is InvalidCastException or OverflowException)
+        {
+            return JsonValue.Create(Spelled(reader, index));
+        }
+    }
+
+    private static string Spelled(DbDataReader reader, int index)
+    {
+        try
+        {
+            return reader switch
+            {
+                NpgsqlDataReader postgres when postgres.GetDataTypeName(index) == "interval" => Spoken(postgres.GetFieldValue<NpgsqlInterval>(index)),
+                NpgsqlDataReader postgres => postgres.GetFieldValue<double>(index).ToString("R", CultureInfo.InvariantCulture),
+                _ => Convert.ToString(reader.GetProviderSpecificValue(index), CultureInfo.InvariantCulture) ?? string.Empty
+            };
+        }
+        catch (Exception exception) when (exception is InvalidCastException or OverflowException or NotSupportedException)
+        {
+            return $"<{reader.GetDataTypeName(index)}>";
+        }
+    }
+
+    private static string Spoken(NpgsqlInterval interval) =>
+        string.Create(CultureInfo.InvariantCulture, $"{interval.Months} months {interval.Days} days {TimeSpan.FromTicks(interval.Time * 10):c}");
+
+    /// <summary>Stops a result read no further: on SQL Server the command is cancelled, so closing the reader does not pull the rest of it over the network.</summary>
+    /// <remarks>
+    /// PostgreSQL stopped at the LIMIT itself and has nothing left to send; a cancel there finds no statement running and
+    /// Npgsql waits out its cancellation timeout for an answer that does not come — 6.3 s for a page of one row.
+    /// </remarks>
+    private static async Task StopAsync(SourceKind kind, DbCommand command, DbDataReader reader)
+    {
+        if (kind is not SourceKind.SqlServer)
+            return;
+
+        command.Cancel();
+
+        try
+        {
+            await reader.DisposeAsync();
+        }
+        catch (DbException exception) when (IsTimeout(exception) || exception is SqlException)
+        {
+            return;
+        }
+    }
+
+    /// <summary>Rolls back a reading transaction; one the cancelled command already ended has nothing left to roll back.</summary>
+    private static async Task RolledBackAsync(DbTransaction transaction, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await transaction.RollbackAsync(cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
     }
 
     private static JsonNode? Value(object? value) => value switch
@@ -364,7 +454,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
             await using var transaction = await ReadOnlyAsync(source.Source.Kind, connection, cancellationToken);
 
             T answer = await read(connection, transaction);
-            await transaction.RollbackAsync(cancellationToken);
+            await RolledBackAsync(transaction, cancellationToken);
 
             return Answer.Ok(answer);
         }

@@ -14,18 +14,29 @@ namespace Snail.MCP.Connector.Application;
 public static partial class SqlRules
 {
     /// <summary>The words no statement of this server may hold, as whole words.</summary>
+    /// <remarks>
+    /// Besides the words that write or run code: the ones that end or open a transaction, which would take a statement out
+    /// of the read-only one it runs in, and PostgreSQL's functions that read a table, a query or a file named in a string,
+    /// where no FROM shows it. A list cannot name every such function; the read-only user's grants are the wall.
+    /// </remarks>
     public static readonly IReadOnlyList<string> Forbidden =
     [
         "insert", "update", "delete", "merge", "upsert", "drop", "alter", "create", "truncate", "grant", "revoke", "exec",
         "execute", "call", "do", "copy", "into", "openrowset", "openquery", "opendatasource", "bulk", "shutdown", "dbcc",
-        "backup", "restore", "vacuum", "lock", "set", "reindex", "cluster", "listen", "notify", "refresh", "attach", "detach"
+        "backup", "restore", "vacuum", "lock", "set", "reindex", "cluster", "listen", "notify", "refresh", "attach", "detach",
+        "commit", "rollback", "savepoint", "begin",
+        "query_to_xml", "query_to_xmlschema", "query_to_xml_and_xmlschema", "table_to_xml", "table_to_xmlschema",
+        "table_to_xml_and_xmlschema", "cursor_to_xml", "cursor_to_xmlschema", "schema_to_xml", "schema_to_xmlschema",
+        "schema_to_xml_and_xmlschema", "database_to_xml", "database_to_xmlschema", "database_to_xml_and_xmlschema", "ts_stat",
+        "dblink", "dblink_exec", "pg_read_file", "pg_read_binary_file", "pg_ls_dir", "pg_stat_file", "lo_import", "lo_export",
+        "lo_get"
     ];
 
     /// <summary>The statement as it is sent, or why it is not one this server runs against the source.</summary>
     public static Answer<string> Select(string? statement, Source source)
     {
         string text = statement?.Trim().TrimEnd(';').Trim() ?? string.Empty;
-        string bare = Bare(text);
+        string bare = Bare(text, source.Kind);
 
         if (bare.Length == 0)
             return Answer.Failed<string>(Messages.NotASelect, Messages.SelectHint);
@@ -47,9 +58,9 @@ public static partial class SqlRules
     }
 
     /// <summary>The tables a statement reads after FROM and JOIN, each once, in the order written — as the journal names them.</summary>
-    public static IReadOnlyList<string> Read(string statement)
+    public static IReadOnlyList<string> Read(string statement, SourceKind kind)
     {
-        string bare = Bare(statement);
+        string bare = Bare(statement, kind);
         IReadOnlySet<string> named = Named(bare);
 
         return [.. Tables(bare).Where(table => !named.Contains(table)).Distinct(StringComparer.Ordinal)];
@@ -71,48 +82,122 @@ public static partial class SqlRules
             || string.Equals(allowed, bareName, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The statement with comments removed and every string literal emptied.</summary>
-    private static string Bare(string text)
+    /// <summary>The statement with comments removed and every string literal emptied, read in the engine's own quoting.</summary>
+    /// <remarks>
+    /// A quote counts only where the engine reads one: inside a quoted name — <c>"a'"</c>, and <c>[a']</c> on SQL Server —
+    /// it is a letter of the name; in PostgreSQL's <c>E'\''</c> a backslash escapes it; <c>$$…$$</c> is a literal too.
+    /// Read any other way, a quote the database never sees opens a literal that hides the rest of the statement — its
+    /// FROM, a second statement — from every rule here (audit of 30.10.2026). A bracket is a name only on SQL Server: in
+    /// PostgreSQL it is an array's or a jsonb's subscript, <c>data[']']</c>, and read as a name it would hide the same way.
+    /// </remarks>
+    private static string Bare(string text, SourceKind kind)
     {
         var bare = new StringBuilder(text.Length);
         int index = 0;
 
         while (index < text.Length)
         {
-            if (text[index] == '-' && index + 1 < text.Length && text[index + 1] == '-')
+            char current = text[index];
+            char next = index + 1 < text.Length ? text[index + 1] : '\0';
+
+            if (current == '-' && next == '-')
             {
                 index = text.IndexOf('\n', index) is var end && end < 0 ? text.Length : end;
                 continue;
             }
 
-            if (text[index] == '/' && index + 1 < text.Length && text[index + 1] == '*')
+            if (current == '/' && next == '*')
             {
                 index = text.IndexOf("*/", index + 2, StringComparison.Ordinal) is var end && end < 0 ? text.Length : end + 2;
                 bare.Append(' ');
                 continue;
             }
 
-            if (text[index] == '\'')
+            if (current == '"' || (current == '[' && kind is SourceKind.SqlServer))
             {
-                index = Closed(text, index);
+                int closed = NameEnd(text, index, current == '"' ? '"' : ']');
+                bare.Append(text, index, closed - index);
+                index = closed;
+                continue;
+            }
+
+            if (current == '\'')
+            {
+                index = Closed(text, index, isEscaping: kind is SourceKind.PostgreSql && IsEscapeString(text, index));
                 bare.Append("''");
                 continue;
             }
 
-            bare.Append(text[index]);
+            if (current == '$' && kind is SourceKind.PostgreSql && DollarTag(text, index) is { } tag)
+            {
+                index = text.IndexOf(tag, index + tag.Length, StringComparison.Ordinal) is var end && end < 0 ? text.Length : end + tag.Length;
+                bare.Append("''");
+                continue;
+            }
+
+            bare.Append(current);
             index++;
         }
 
         return bare.ToString();
     }
 
-    /// <summary>The index just past the string literal that opens at <paramref name="start"/>, a doubled quote kept inside it.</summary>
-    private static int Closed(string text, int start)
+    /// <summary>The index just past the quoted name that opens at <paramref name="start"/>, a doubled closing mark kept inside it.</summary>
+    private static int NameEnd(string text, int start, char closing)
     {
         int index = start + 1;
 
         while (index < text.Length)
         {
+            if (text[index] == closing && index + 1 < text.Length && text[index + 1] == closing)
+            {
+                index += 2;
+                continue;
+            }
+
+            if (text[index] == closing)
+                return index + 1;
+
+            index++;
+        }
+
+        return text.Length;
+    }
+
+    /// <summary>Whether the literal at <paramref name="quote"/> is PostgreSQL's escape string: <c>E'…'</c>, the E standing alone.</summary>
+    private static bool IsEscapeString(string text, int quote) =>
+        quote > 0 && text[quote - 1] is 'E' or 'e' && (quote == 1 || !IsNamePart(text[quote - 2]));
+
+    /// <summary>The <c>$tag$</c> that opens a dollar-quoted literal at <paramref name="start"/>; null when none opens there.</summary>
+    private static string? DollarTag(string text, int start)
+    {
+        if (start > 0 && IsNamePart(text[start - 1]))
+            return null;
+
+        int index = start + 1;
+        while (index < text.Length && text[index] != '$' && IsNamePart(text[index]))
+            index++;
+
+        bool isTag = index < text.Length && text[index] == '$' && (index == start + 1 || !char.IsAsciiDigit(text[start + 1]));
+
+        return isTag ? text[start..(index + 1)] : null;
+    }
+
+    private static bool IsNamePart(char letter) => char.IsLetterOrDigit(letter) || letter is '_' or '$';
+
+    /// <summary>The index just past the string literal that opens at <paramref name="start"/>, a doubled quote kept inside it.</summary>
+    private static int Closed(string text, int start, bool isEscaping)
+    {
+        int index = start + 1;
+
+        while (index < text.Length)
+        {
+            if (isEscaping && text[index] == '\\')
+            {
+                index += 2;
+                continue;
+            }
+
             if (text[index] == '\'' && index + 1 < text.Length && text[index + 1] == '\'')
             {
                 index += 2;

@@ -29,7 +29,10 @@ public enum ProposalState
     Rejected,
 
     /// <summary>It ran.</summary>
-    Applied
+    Applied,
+
+    /// <summary>It was taken to run and its end is not known yet: no second call may take it.</summary>
+    Applying
 }
 
 /// <summary>
