@@ -65,6 +65,23 @@ public sealed class VaultSourcesTests
         Assert.All(vault.Tokens, token => Assert.Equal("s.reader", token));
     }
 
+    /// <summary>A secret a person filled in half is named with what it lacks, rather than missing from the list without a word.</summary>
+    [Fact]
+    public async Task ListAsync_SecretWithoutWhatItNeeds_IsLeftOutAndNamed()
+    {
+        var vault = new Vault(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/secret/metadata/connectors?list=true"] = """{"data":{"keys":["crm","half"]}}""",
+            ["/v1/secret/data/connectors/crm"] = """{"data":{"data":{"kind":"mongodb","database":"crm","collections":"*","readUri":"mongodb://reader:secret@db/crm"}}}""",
+            ["/v1/secret/data/connectors/half"] = """{"data":{"data":{"kind":"mongodb","database":"half"}}}"""
+        });
+
+        var listed = await Sources(vault).ListAsync(CancellationToken.None);
+
+        Assert.Equal(["crm"], listed.Value!.Select(source => source.Name));
+        Assert.Contains(Messages.SourceIncomplete("half", "readUri"), listed.Hint, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ListAsync_NothingDeclared_SaysSoAndHowOneIsDeclared()
     {
@@ -110,7 +127,8 @@ public sealed class VaultSourcesTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Tokens.Add(request.Headers.GetValues("X-Vault-Token").Single());
+            lock (Tokens)
+                Tokens.Add(request.Headers.GetValues("X-Vault-Token").Single());
 
             var answer = answers.TryGetValue(request.RequestUri!.PathAndQuery, out string? body)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") }

@@ -98,7 +98,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await ReadOnlyAsync(source.Source.Kind, connection, cancellationToken);
 
-        await using (var command = Command(connection, transaction, Bounded(source.Source.Kind, select, most + 1), 600))
+        await using (var command = Command(connection, transaction, Bounded(source.Source.Kind, select, most + 1), options.Value.ExportSeconds))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             int read = 0;
@@ -122,11 +122,11 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
             string name = Quoted(source.Source.Kind, await ResolvedAsync(connection, transaction, table, cancellationToken));
             var matching = JsonNode.Parse(filter)!.AsObject();
 
-            await using var count = Bound(source.Source.Kind, connection, transaction, SqlStatements.Count(source.Source.Kind, name, matching), Seconds);
+            await using var count = Bound(connection, transaction, SqlStatements.Count(source.Source.Kind, name, matching), Seconds);
             long matched = Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
             List<string> shown = [];
-            await using var rows = Bound(source.Source.Kind, connection, transaction, SqlStatements.Sample(source.Source.Kind, name, matching, sample), Seconds);
+            await using var rows = Bound(connection, transaction, SqlStatements.Sample(source.Source.Kind, name, matching, sample), Seconds);
             await using var reader = await rows.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 shown.Add(Row(reader));
@@ -152,7 +152,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
             long written = 0;
             foreach (var statement in SqlStatements.Write(kind, name, proposal))
             {
-                await using var command = Bound(kind, connection, transaction, statement, Seconds);
+                await using var command = Bound(connection, transaction, statement, Seconds);
                 written += await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -317,7 +317,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
     }
 
     /// <summary>A command of a statement the server wrote, its values bound; PostgreSQL takes text as untyped, so the column's type decides.</summary>
-    private static DbCommand Bound(SourceKind kind, DbConnection connection, DbTransaction transaction, SqlStatement statement, int seconds)
+    private static DbCommand Bound(DbConnection connection, DbTransaction transaction, SqlStatement statement, int seconds)
     {
         var command = Command(connection, transaction, statement.Text, seconds);
         for (int index = 0; index < statement.Values.Count; index++)

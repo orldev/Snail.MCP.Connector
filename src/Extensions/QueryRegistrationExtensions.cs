@@ -24,7 +24,7 @@ public static class QueryRegistrationExtensions
             services.AddSingleton<ITables, SqlTables>();
             services.AddSingleton<IQueryJournal>(provider => FileQueryJournal.InDataFolder(provider.GetRequiredService<IOptions<ConnectorOptions>>()));
             services.AddSingleton<ITableFiles, TableFiles>();
-            services.AddSingleton<IProposals>(_ => FileProposals.InDataFolder());
+            services.AddSingleton<IProposals>(provider => FileProposals.InDataFolder(provider.GetRequiredService<IOptions<ConnectorOptions>>()));
             services.AddSingleton<Queries>();
             services.AddSingleton<Writes>();
 

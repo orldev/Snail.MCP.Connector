@@ -20,7 +20,7 @@ public static class ToolResponse
 
     /// <summary>The sources, without their credentials.</summary>
     public static CallToolResult From(Answer<IReadOnlyList<Source>> answer) =>
-        Of(answer, sources => new JsonObject { ["sources"] = new JsonArray([.. sources.Select(Data)]) });
+        Of(answer, sources => new JsonObject { ["sources"] = new JsonArray([.. sources.Select(Data)]), ["note"] = answer.Hint });
 
     /// <summary>The collections of a source an agent may read.</summary>
     public static CallToolResult From(Answer<SourceCollections> answer) =>

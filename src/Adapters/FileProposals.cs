@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
 using Snail.Sdk.Mcp.Hosting;
@@ -8,10 +9,19 @@ using Snail.Sdk.Mcp.Hosting;
 namespace Snail.MCP.Connector.Adapters;
 
 /// <summary>Proposals to write as one JSON file each in the server's data folder, so a restart between the decision and the write forgets none.</summary>
-public sealed partial class FileProposals(string folder) : IProposals
+/// <remarks>
+/// A proposal carries a sample of the company's rows, so it is kept no longer than the journal is: a file not written
+/// for <paramref name="days"/> goes, checked once a day. No days keeps them all.
+/// </remarks>
+/// <param name="folder">Where the files are.</param>
+/// <param name="days">How long a proposal is kept after it was last written; 0 keeps every one.</param>
+public sealed partial class FileProposals(string folder, int days = 0) : IProposals
 {
-    /// <summary>The proposals in the server's own data folder.</summary>
-    public static FileProposals InDataFolder() => new(Path.Combine(ServerFolders.DataDirectory(ConnectorSettings.Name), "proposals"));
+    private DateOnly _forgotten;
+
+    /// <summary>The proposals in the server's own data folder, kept as long as the journal.</summary>
+    public static FileProposals InDataFolder(IOptions<ConnectorOptions> options) =>
+        new(Path.Combine(ServerFolders.DataDirectory(ConnectorSettings.Name), "proposals"), options.Value.JournalDays);
 
     /// <inheritdoc />
     public async Task SaveAsync(WriteProposal proposal, CancellationToken cancellationToken)
@@ -22,6 +32,28 @@ public sealed partial class FileProposals(string folder) : IProposals
 
         await File.WriteAllTextAsync(written, JsonSerializer.Serialize(proposal, ProposalJson.Default.WriteProposal), cancellationToken);
         File.Move(written, file, overwrite: true);
+
+        Forget();
+    }
+
+    private void Forget()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (days <= 0 || today == _forgotten)
+            return;
+
+        _forgotten = today;
+        var stale = DateTime.UtcNow.AddDays(-days);
+
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(folder, "*.json").Where(file => File.GetLastWriteTimeUtc(file) < stale))
+                File.Delete(file);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _forgotten = default;
+        }
     }
 
     /// <inheritdoc />

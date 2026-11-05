@@ -35,9 +35,7 @@ WORKDIR /app
 COPY --from=build /app .
 # The journal of queries lives in the server's data folder, a volume on the stand: made here so the volume takes the app user's ownership.
 RUN mkdir -p /home/app/.s3l-mcp-connector && chown -R app:app /home/app
-ENV ASPNETCORE_HTTP_PORTS=8830 \
-    Logging__LogLevel__Default=Information \
-    Logging__LogLevel__Microsoft.AspNetCore=Warning
+# The port is the server's own setting, SNAIL_MCP_CONNECTOR_URL (8830 unset); its host logs to stderr as every server does.
 EXPOSE 8830
 USER app
 

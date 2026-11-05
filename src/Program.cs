@@ -1,11 +1,10 @@
+using Snail.MCP.Connector.Configuration;
 using Snail.MCP.Connector.Extensions;
+using Snail.Sdk.Mcp.Http;
 
-var app = WebApplication.CreateBuilder(args)
+var app = McpHttpHost.CreateContainerBuilder(args, ConnectorSettings.Url.Port)
     .ConfigureConnectorServer()
     .Build()
     .UseConnectorEndpoints();
 
 await app.RunAsync();
-
-/// <summary>The entry point, named so the contract tests can host the server in memory.</summary>
-public partial class Program;

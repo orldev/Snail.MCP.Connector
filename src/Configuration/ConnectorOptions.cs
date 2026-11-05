@@ -30,6 +30,9 @@ public sealed class ConnectorOptions
     /// <summary>Rows an export writes at most.</summary>
     public int MostExportRows { get; set; } = 100000;
 
+    /// <summary>Seconds the database gets to stream the rows of one export.</summary>
+    public int ExportSeconds { get; set; } = 600;
+
     /// <summary>Columns an export writes at most; the fields past them go into one column as the JSON of the rest.</summary>
     public int MostExportColumns { get; set; } = 1000;
 

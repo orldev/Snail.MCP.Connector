@@ -21,7 +21,7 @@ public sealed class DiagnosticsTools(ISources sources, IOptions<ConnectorOptions
         var settings = options.Value;
         var state = new JsonObject
         {
-            ["server"] = typeof(DiagnosticsTools).Assembly.GetName().Version?.ToString(3),
+            ["server"] = Snail.Sdk.Mcp.Hosting.ServerIdentity.VersionOf(typeof(DiagnosticsTools).Assembly),
             ["vault"] = string.IsNullOrWhiteSpace(settings.VaultAddress) ? null : settings.VaultAddress,
             ["sources"] = listed.Value?.Count ?? 0,
             ["note"] = listed.Error,

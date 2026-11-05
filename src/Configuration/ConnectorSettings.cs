@@ -13,6 +13,9 @@ public static class ConnectorSettings
     /// <summary>The server's short name, which names its settings file and the prefix of its variables.</summary>
     public const string Name = "connector";
 
+    /// <summary>Where the server listens: Url (<c>SNAIL_MCP_CONNECTOR_URL</c>), its port on every interface of the container; 8830 when unset.</summary>
+    public static Uri Url => new(Read()["Url"] ?? "http://0.0.0.0:8830/");
+
     /// <summary>The settings as they stand: the settings file found, then the process's variables.</summary>
     public static IConfiguration Read() => Read(ServerSettings.FileOf(Name), Environment.GetEnvironmentVariables());
 

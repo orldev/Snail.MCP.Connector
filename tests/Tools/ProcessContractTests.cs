@@ -30,7 +30,7 @@ public sealed class ProcessContractTests : IAsyncLifetime
             RedirectStandardError = true
         };
 
-        start.Environment["ASPNETCORE_URLS"] = _address.ToString();
+        start.Environment["SNAIL_MCP_CONNECTOR_URL"] = _address.ToString();
         start.Environment[ServerSettings.FileVariableOf("connector")] = ServerProgram.NoSettingsFile;
 
         _server = Process.Start(start)!;
@@ -136,6 +136,23 @@ public sealed class ProcessContractTests : IAsyncLifetime
         using var answer = await http.PostAsync(new Uri("/proposals/w0123456789abcdef/decision", UriKind.Relative), new StringContent("""{"allow":true,"by":"agent"}""", System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
+    }
+
+    /// <summary>A page in a browser that reaches the server's address — DNS rebinding, a link — is refused before any tool.</summary>
+    [Fact]
+    public async Task Request_FromABrowser_IsRefused()
+    {
+        using var http = new HttpClient { BaseAddress = _address };
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("/mcp?root=/workspaces/t1/step-0", UriKind.Relative))
+        {
+            Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"page","version":"1"}}}""", System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", "http://evil.example");
+        request.Headers.Add("Accept", "application/json, text/event-stream");
+
+        using var answer = await http.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, answer.StatusCode);
     }
 
     private Task<McpClient> SessionAsync(string? query, CancellationToken cancellationToken) =>

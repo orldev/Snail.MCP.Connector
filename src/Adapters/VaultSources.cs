@@ -13,7 +13,9 @@ namespace Snail.MCP.Connector.Adapters;
 /// A secret holds <c>kind</c> (mongodb, sqlserver, postgresql), <c>database</c>, <c>collections</c> (comma-separated,
 /// <c>*</c> for every one), <c>description</c>, <c>readUri</c> and, when a person declared a writing user, <c>writeUri</c>.
 /// Read on every call rather than kept: a source a person changes on the stand is the one the next query reaches, and
-/// Vault answers within the same network in milliseconds. The connection strings never leave this adapter but in a
+/// Vault answers within the same network in milliseconds; the sources of a listing are read at once, not one by one.
+/// A source a secret declares without what it needs is left out of a listing and named in its note, not dropped
+/// silently. The connection strings never leave this adapter but in a
 /// <see cref="SourceAccess"/>; a listing carries none.
 /// </remarks>
 public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorOptions> options) : ISources
@@ -35,14 +37,14 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
         if (names.Count == 0)
             return Answer.Failed<IReadOnlyList<Source>>(Messages.NoSources, Messages.NoSourcesHint);
 
-        List<Source> sources = [];
-        foreach (string name in names.Order(StringComparer.Ordinal))
-        {
-            if ((await FindAsync(name, cancellationToken)).Value is { } found)
-                sources.Add(found.Source);
-        }
+        IReadOnlyList<string> ordered = [.. names.Order(StringComparer.Ordinal)];
+        var found = await Task.WhenAll(ordered.Select(name => FindAsync(name, cancellationToken)));
 
-        return Answer.Ok<IReadOnlyList<Source>>(sources);
+        IReadOnlyList<Source> sources = [.. found.Where(source => source.Value is not null).Select(source => source.Value!.Source)];
+        IReadOnlyList<string> unread = [.. found.Where(source => source.Value is null).Select(source => source.Error!)];
+        string? note = unread.Count == 0 ? null : Messages.SourcesUnread(unread);
+
+        return new Answer<IReadOnlyList<Source>>(sources, null, note);
     }
 
     /// <inheritdoc />

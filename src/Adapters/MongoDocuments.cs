@@ -154,7 +154,7 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
     public async IAsyncEnumerable<string> StreamAsync(ReachableSource source, DocumentQuery query, string? pipeline, int most, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var documents = Database(source).GetCollection<BsonDocument>(query.Collection);
-        var time = TimeSpan.FromMinutes(10);
+        var time = TimeSpan.FromSeconds(options.Value.ExportSeconds);
 
         using var cursor = pipeline is null
             ? await documents.Find(BsonDocument.Parse(query.Filter), new FindOptions { MaxTime = time }).Limit(most + 1).ToCursorAsync(cancellationToken)

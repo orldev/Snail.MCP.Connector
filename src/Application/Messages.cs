@@ -55,7 +55,6 @@ public static class Messages
     public static string Changed(long written, long matched) =>
         $"The data changed since the proposal: the write would touch {written}, the person allowed {matched}. Nothing was written; propose it again.";
 
-
     /// <summary>A statement that is not a SELECT.</summary>
     public const string NotASelect = "The statement is not a SELECT: this server runs one SELECT, or a WITH that ends in one.";
 
@@ -204,6 +203,9 @@ public static class Messages
 
     /// <summary>Vault refused or failed.</summary>
     public static string VaultSaid(string detail) => $"The sources could not be read from Vault: {detail}";
+
+    /// <summary>The sources a listing left out, each with why: a secret that lacks what it needs is named, not dropped silently.</summary>
+    public static string SourcesUnread(IReadOnlyList<string> said) => $"Left out of the list: {string.Join(" ", said)}";
 
     /// <summary>A source whose secret lacks what it needs.</summary>
     public static string SourceIncomplete(string name, string key) => $"The source \"{name}\" is declared without {key}.";
