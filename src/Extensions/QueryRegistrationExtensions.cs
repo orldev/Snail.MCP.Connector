@@ -6,7 +6,7 @@ using Snail.MCP.Connector.Configuration;
 
 namespace Snail.MCP.Connector.Extensions;
 
-/// <summary>The queries feature: the session's copy, the sources in Vault, MongoDB, the journal and the table files.</summary>
+/// <summary>The queries feature: the session's copy (its address is the transport's), the sources in Vault, MongoDB, the journal and the table files.</summary>
 public static class QueryRegistrationExtensions
 {
     extension(IServiceCollection services)
@@ -15,10 +15,8 @@ public static class QueryRegistrationExtensions
         public IServiceCollection AddQueries()
         {
             services.AddSingleton(TimeProvider.System);
-            services.AddHttpContextAccessor();
             services.AddHttpClient(VaultSources.Client, client => client.Timeout = TimeSpan.FromSeconds(15));
             services.AddSingleton<SessionCopy>();
-            services.AddSingleton<SessionGrant>();
             services.AddSingleton<ISources, VaultSources>();
             services.AddSingleton<IDocuments, MongoDocuments>();
             services.AddSingleton<ITables, SqlTables>();

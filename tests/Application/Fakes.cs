@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Application.Ports;
@@ -27,14 +26,14 @@ internal sealed class Fakes
     public Writes Writes(TimeProvider? clock = null)
     {
         var options = Options.Create(Settings);
-        var context = new DefaultHttpContext();
-        if (Root is not null)
-            context.Request.QueryString = new QueryString($"?root={Root}");
-
-        var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
+        var copy = Copy(Root, options);
 
         return new Writes(new SourceList(Sources), Database, Tables, Kept, Written, copy, clock ?? TimeProvider.System, options);
     }
+
+    /// <summary>The session's copy as an address naming <paramref name="root"/> gives it, or as one naming none.</summary>
+    public static SessionCopy Copy(string? root, IOptions<ConnectorOptions> options) =>
+        new(root is null ? new FixedAddress() : new FixedAddress((SessionCopy.Parameter, root)), options);
 
     internal sealed class Proposals : IProposals
     {
@@ -62,14 +61,13 @@ internal sealed class Fakes
     /// <summary>Holds every export before its first row until a test lets it go; none when exports run straight through.</summary>
     public TaskCompletionSource? Held { get; set; }
 
+    /// <summary>Why every export's file cannot be written; none when files are written.</summary>
+    public string? FilesRefuse { get; set; }
+
     public Queries Queries()
     {
         var options = Options.Create(new ConnectorOptions());
-        var context = new DefaultHttpContext();
-        if (Root is not null)
-            context.Request.QueryString = new QueryString($"?root={Root}");
-
-        var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
+        var copy = Copy(Root, options);
 
         return new Queries(new SourceList(Sources), Database, Tables, Written, new NoFiles(this), copy, TimeProvider.System, options);
     }
@@ -226,6 +224,9 @@ internal sealed class Fakes
         {
             if (fakes.Held is { } held)
                 await held.Task.WaitAsync(cancellationToken);
+
+            if (fakes.FilesRefuse is { } refused)
+                return Answer.Failed(refused, "Free some room in the copy.", "full");
 
             int count = 0;
             await foreach (string row in rows.WithCancellation(cancellationToken))

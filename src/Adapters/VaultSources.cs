@@ -44,7 +44,7 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
         IReadOnlyList<string> unread = [.. found.Where(source => source.Value is null).Select(source => source.Error!)];
         string? note = unread.Count == 0 ? null : Messages.SourcesUnread(unread);
 
-        return new Answer<IReadOnlyList<Source>>(sources, null, note);
+        return Answer.Ok(sources) with { Hint = note };
     }
 
     /// <inheritdoc />

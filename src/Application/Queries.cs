@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -30,15 +31,15 @@ public sealed partial class Queries(
     public async Task<Answer<SourceCollections>> CollectionsAsync(string source, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, null, Engine.Any, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<SourceCollections>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<SourceCollections>();
 
         var found = context.Source.Source;
         var listed = await RecordedAsync(context, Source.Every, "schema", "{}",
             () => found.Kind is SourceKind.MongoDb ? documents.CollectionsAsync(context.Source, cancellationToken) : tables.TablesAsync(context.Source, cancellationToken),
             names => names.Count, cancellationToken);
-        if (listed.Value is not { } names)
-            return Answer.Failed<SourceCollections>(listed.Error!, listed.Hint);
+        if (!listed.TryGet(out var names))
+            return listed.As<SourceCollections>();
 
         return Answer.Ok(new SourceCollections(found, [.. names.Where(name => SqlRules.IsAllowed(found, name)).Order(StringComparer.Ordinal)]));
     }
@@ -47,8 +48,8 @@ public sealed partial class Queries(
     public async Task<Answer<CollectionShape>> ShapeAsync(string source, string collection, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, collection, Engine.Any, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<CollectionShape>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<CollectionShape>();
 
         string recorded = context.Source.Source.Kind is SourceKind.MongoDb ? $$"""{"sample":{{options.Value.Sample}}}""" : "{}";
 
@@ -63,12 +64,12 @@ public sealed partial class Queries(
     public async Task<Answer<RowPage>> QueryAsync(string source, string select, int? limit, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, null, Engine.Tables, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<RowPage>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<RowPage>();
 
         var checkedSelect = SqlRules.Select(select, context.Source.Source);
-        if (checkedSelect.Value is not { } statement)
-            return Answer.Failed<RowPage>(checkedSelect.Error!, checkedSelect.Hint);
+        if (!checkedSelect.TryGet(out var statement))
+            return checkedSelect.As<RowPage>();
 
         return await RecordedAsync(context, Journaled(statement, context.Source.Source.Kind), "query", statement, () => tables.QueryAsync(context.Source, statement, Limit(limit), cancellationToken), page => page.Rows.Count, cancellationToken);
     }
@@ -77,12 +78,12 @@ public sealed partial class Queries(
     public async Task<Answer<RowPage>> FindAsync(string source, string collection, string? filter, string? projection, string? sort, int? limit, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, collection, Engine.Documents, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<RowPage>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<RowPage>();
 
         var parts = new[] { QueryRules.Document(filter, "filter"), QueryRules.Document(projection, "projection"), QueryRules.Document(sort, "sort") };
         if (parts.FirstOrDefault(part => part.Value is null) is { } refused)
-            return Answer.Failed<RowPage>(refused.Error!, refused.Hint);
+            return refused.As<RowPage>();
 
         var query = new DocumentQuery(collection, parts[0].Value!.ToJsonString(), Optional(projection, parts[1]), Optional(sort, parts[2]), Limit(limit));
         string recorded = new JsonObject { ["filter"] = parts[0].Value!.DeepClone(), ["projection"] = parts[1].Value!.DeepClone(), ["sort"] = parts[2].Value!.DeepClone(), ["limit"] = query.Limit.Rows }.ToJsonString();
@@ -94,12 +95,12 @@ public sealed partial class Queries(
     public async Task<Answer<RowPage>> AggregateAsync(string source, string collection, string pipeline, int? limit, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, collection, Engine.Documents, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<RowPage>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<RowPage>();
 
         var stages = QueryRules.Pipeline(pipeline, context.Source.Source);
         if (stages.Value is null)
-            return Answer.Failed<RowPage>(stages.Error!, stages.Hint);
+            return stages.As<RowPage>();
 
         string text = stages.Value.ToJsonString();
 
@@ -110,12 +111,12 @@ public sealed partial class Queries(
     public async Task<Answer<long>> CountAsync(string source, string collection, string? filter, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, collection, Engine.Documents, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<long>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<long>();
 
         var matched = QueryRules.Document(filter, "filter");
         if (matched.Value is null)
-            return Answer.Failed<long>(matched.Error!, matched.Hint);
+            return matched.As<long>();
 
         string text = matched.Value.ToJsonString();
 
@@ -126,8 +127,8 @@ public sealed partial class Queries(
     public async Task<Answer<ExportedFile>> ExportAsync(string source, string? collection, string? filter, string? pipeline, string? select, string format, string file, CancellationToken cancellationToken)
     {
         var prepared = await PrepareExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken);
-        if (prepared.Value is not { } export)
-            return Answer.Failed<ExportedFile>(prepared.Error!, prepared.Hint);
+        if (!prepared.TryGet(out var export))
+            return prepared.As<ExportedFile>();
 
         return await export.WriteAsync(cancellationToken);
     }
@@ -140,8 +141,8 @@ public sealed partial class Queries(
     public async Task<Answer<PreparedExport>> PrepareExportAsync(string source, string? collection, string? filter, string? pipeline, string? select, string format, string file, CancellationToken cancellationToken)
     {
         var reached = await ReachAsync(source, collection, Engine.Any, cancellationToken);
-        if (reached.Value is not { } context)
-            return Answer.Failed<PreparedExport>(reached.Error!, reached.Hint);
+        if (!reached.TryGet(out var context))
+            return reached.As<PreparedExport>();
 
         if (!Enum.TryParse(format, ignoreCase: true, out TableFormat table) || !Enum.IsDefined(table))
             return Answer.Failed<PreparedExport>(Messages.BadFormat);
@@ -184,8 +185,8 @@ public sealed partial class Queries(
     private async Task<Answer<PreparedExport>> PrepareTablesAsync(QueryContext context, string? select, TableFormat table, string name, CancellationToken cancellationToken)
     {
         var checkedSelect = SqlRules.Select(select, context.Source.Source);
-        if (checkedSelect.Value is not { } statement)
-            return Answer.Failed<PreparedExport>(checkedSelect.Error!, checkedSelect.Hint);
+        if (!checkedSelect.TryGet(out var statement))
+            return checkedSelect.As<PreparedExport>();
 
         string collection = Journaled(statement, context.Source.Source.Kind);
         string recorded = new JsonObject { ["select"] = statement, ["file"] = name }.ToJsonString();
@@ -209,8 +210,8 @@ public sealed partial class Queries(
     public async Task<Answer<IReadOnlyList<QueryRecord>>> JournalAsync(int most, CancellationToken cancellationToken)
     {
         var place = copy.Current();
-        if (place.Value is not { } current)
-            return Answer.Failed<IReadOnlyList<QueryRecord>>(place.Error!, place.Hint);
+        if (!place.TryGet(out var current))
+            return place.As<IReadOnlyList<QueryRecord>>();
 
         return Answer.Ok(await journal.ReadAsync(current.Task, Math.Clamp(most, 1, options.Value.MostRows), cancellationToken));
     }
@@ -218,12 +219,12 @@ public sealed partial class Queries(
     private async Task<Answer<QueryContext>> ReachAsync(string name, string? collection, Engine engine, CancellationToken cancellationToken)
     {
         var place = copy.Current();
-        if (place.Value is not { } current)
-            return Answer.Failed<QueryContext>(place.Error!, place.Hint);
+        if (!place.TryGet(out var current))
+            return place.As<QueryContext>();
 
         var found = await sources.FindAsync(name.Trim(), cancellationToken);
-        if (found.Value is not { } source)
-            return Answer.Failed<QueryContext>(found.Error!, found.Hint);
+        if (!found.TryGet(out var source))
+            return found.As<QueryContext>();
 
         bool isDocuments = source.Source.Kind is SourceKind.MongoDb;
         if (engine is Engine.Documents && !isDocuments)
@@ -298,5 +299,5 @@ public sealed partial class Queries(
     }
 
     /// <summary>The source a query goes to, and the copy of the task it is made for.</summary>
-    private sealed record QueryContext(ReachableSource Source, CopyPlace Copy);
+    private sealed record QueryContext(ReachableSource Source, WorkspacePlace<string> Copy);
 }

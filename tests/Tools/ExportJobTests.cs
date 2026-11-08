@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using ModelContextProtocol.Protocol;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Tests.Application;
 using Snail.MCP.Connector.Tools;
@@ -21,11 +20,32 @@ public sealed class ExportJobTests
     {
         var result = await Tools().ExportAsync("sales", "csv", "paid", collection: "orders", filter: "{}");
 
-        Assert.NotEqual(true, result.IsError);
-        Assert.Equal("exports/paid.csv", Said(result)["data"]?["file"]?.GetValue<string>());
-        var report = Report(result);
+        Assert.True(result.IsOk(), result.Text());
+        Assert.Equal("exports/paid.csv", result.Data()?["file"]?.GetValue<string>());
+        var report = result.Report()!;
         Assert.Equal(JobState.Succeeded, report.State);
-        Assert.Equal("exports/paid.csv", JsonNode.Parse(report.Result!.Value.GetRawText())?["data"]?["file"]?.GetValue<string>());
+        Assert.Equal("exports/paid.csv", JsonNode.Parse(report.Result!.Value.GetRawText())?["file"]?.GetValue<string>());
+    }
+
+    /// <summary>
+    /// A file the work could not write ends the job failed with the work's own words, and the answer is that failure —
+    /// ok false and flagged — never a success whose data says ok false.
+    /// </summary>
+    [Fact]
+    public async Task ExportAsync_FileRefusedWithinTheWait_AnswersTheRefusalAndEndsTheJobFailed()
+    {
+        _fakes.FilesRefuse = "The copy is full.";
+
+        var result = await Tools().ExportAsync("sales", "csv", "paid", collection: "orders", filter: "{}");
+
+        Assert.True(result.IsError);
+        Assert.False(result.IsOk());
+        Assert.Equal("The copy is full.", result.Error());
+        Assert.Equal("Free some room in the copy.", result.Hint());
+        Assert.Equal("full", result.Type());
+        var report = result.Report()!;
+        Assert.Equal(JobState.Failed, report.State);
+        Assert.Equal("full", report.Type);
     }
 
     /// <summary>The job is the task's: a step of another task holding its URI reads nothing.</summary>
@@ -36,11 +56,12 @@ public sealed class ExportJobTests
 
         var result = await Tools().ExportAsync("sales", "xlsx", "paid", collection: "orders", filter: "{}", wait: 0);
 
-        var data = Said(result)["data"]!;
-        string uri = data["job"]!.GetValue<string>();
+        var data = result.Data()!;
+        string uri = data["uri"]!.GetValue<string>();
         Assert.StartsWith("job://connector/export/", uri, StringComparison.Ordinal);
         Assert.Equal("running", data["state"]?.GetValue<string>());
         Assert.Equal("exports/paid.xlsx", data["file"]?.GetValue<string>());
+        Assert.Contains("exports/paid.xlsx", data["note"]?.GetValue<string>(), StringComparison.Ordinal);
         Assert.Null(_jobs.Find(uri, "another-task"));
 
         _fakes.Held.SetResult();
@@ -74,7 +95,7 @@ public sealed class ExportJobTests
         var result = await Tools().ExportAsync("sales", "pdf", "paid", collection: "orders", filter: "{}");
 
         Assert.True(result.IsError);
-        Assert.Contains(Messages.BadFormat, Text(result), StringComparison.Ordinal);
+        Assert.Contains(Messages.BadFormat, result.Error(), StringComparison.Ordinal);
         Assert.Empty(_jobs.InFlight);
         Assert.Empty(_jobs.Recent);
         Assert.Empty(_fakes.Written.Records);
@@ -88,15 +109,9 @@ public sealed class ExportJobTests
         var result = await Tools().ExportAsync("sales", "csv", "paid", collection: "orders", filter: "{}", wait: wait);
 
         Assert.True(result.IsError);
-        Assert.Contains("wait", Text(result), StringComparison.Ordinal);
+        Assert.Contains("wait", result.Error(), StringComparison.Ordinal);
         Assert.Empty(_fakes.Written.Records);
     }
 
     private ConnectorTools Tools() => new(_fakes.Queries(), _jobs);
-
-    private static string Text(CallToolResult result) => Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-
-    private static JsonNode Said(CallToolResult result) => JsonNode.Parse(Text(result))!;
-
-    private static JobReport Report(CallToolResult result) => JobReport.FromJson(result.StructuredContent!.Value.GetRawText())!;
 }

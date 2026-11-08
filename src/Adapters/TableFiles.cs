@@ -47,8 +47,8 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
         try
         {
             var spooled = await SpoolAsync(rows, most, spool, cancellationToken);
-            if (spooled.Value is not { } table)
-                return Answer.Failed<ExportedFile>(spooled.Error!, spooled.Hint);
+            if (!spooled.TryGet(out var table))
+                return spooled.As<ExportedFile>();
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (format is TableFormat.Csv)

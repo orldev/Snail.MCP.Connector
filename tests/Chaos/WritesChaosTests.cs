@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Adapters;
 using Snail.MCP.Connector.Application;
@@ -78,9 +77,7 @@ public sealed class WritesChaosTests : IDisposable
     private Writes Writes(IDocuments documents, IQueryJournal? journal = null)
     {
         var options = Options.Create(_fakes.Settings);
-        var context = new DefaultHttpContext();
-        context.Request.QueryString = new QueryString($"?root={_fakes.Root}");
-        var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
+        var copy = Fakes.Copy(_fakes.Root, options);
 
         return new Writes(new Fakes.SourceList(_fakes.Sources), documents, _fakes.Tables, new FileProposals(_folder), journal ?? new SlowJournal(TimeSpan.Zero), copy, TimeProvider.System, options);
     }

@@ -94,9 +94,6 @@ public static class Messages
     /// <summary>An answer cut by its limit or its size.</summary>
     public const string Cut = "There is more than this answer carries: narrow the filter, ask for fewer fields with a projection, or count first.";
 
-    /// <summary>A failure that said nothing about itself.</summary>
-    public const string Nothing = "Nothing came back.";
-
     /// <summary>An operation the proposal does not know.</summary>
     public const string BadOperation = "The operation is update, update_one, insert or delete.";
 
@@ -215,12 +212,6 @@ public static class Messages
 
     /// <summary>An export still being written when the wait ran out.</summary>
     public static string ExportRunning(string file) => $"The rows are still being written: {file} appears in the working copy once they are, and the journal holds the export either way. Name the file in your answer; it is there by the time a person opens the task.";
-
-    /// <summary>An export the server stopped before it ended.</summary>
-    public static string ExportStopped(string? why) => $"The export was stopped before it ended: {why ?? "the server was stopping"}. No file was left in the working copy.";
-
-    /// <summary>An export whose work broke past every answer it gives.</summary>
-    public static string ExportBroke(string? why) => $"The export broke: {why ?? "no reason was given"}.";
 
     /// <summary>What to do about a stopped or broken export.</summary>
     public const string ExportAgainHint = "Make the export again; narrow it if it was large.";

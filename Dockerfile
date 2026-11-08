@@ -1,10 +1,7 @@
 # The server as a container image, built by .github/workflows/image.yml through the shared mcp-image.yml and pushed
 # from a version tag as ghcr.io/<owner>/s3l-connector-mcp.
 #
-#   docker build --build-context feed=../../nuget -t s3l-connector-mcp:local .
-#
-# Snail.Sdk is taken from the author's local feed for now: the build takes it as a build context named feed, and
-# restore finds it under the name nuget.config maps Snail.Sdk to.
+#   docker build -t s3l-connector-mcp:local .
 #
 # The server listens on every interface at 8830 for the platform's workers. The SDK is pinned to the band global.json
 # asks for: on the floating sdk:10.0 a newer feature band would one day refuse the build. The server is
@@ -17,8 +14,6 @@ ARG VERSION=0.0.0-local
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
 ARG VERSION
 WORKDIR /source
-COPY --from=feed . /feed
-RUN dotnet nuget add source /feed --name LocalPackages
 COPY . .
 RUN dotnet publish src/Snail.MCP.Connector.csproj -c Release -o /app -p:PublishAot=false -p:UseAppHost=false -p:Version=$VERSION
 

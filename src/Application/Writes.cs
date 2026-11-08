@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -32,8 +33,8 @@ public sealed class Writes(
             return Answer.Failed<WriteProposal>(Messages.NoApprovals, Messages.NoApprovalsHint);
 
         var context = await ReachAsync(source, collection, cancellationToken);
-        if (context.Value is not { } reached)
-            return Answer.Failed<WriteProposal>(context.Error!, context.Hint);
+        if (!context.TryGet(out var reached))
+            return context.As<WriteProposal>();
 
         if (!reached.Source.Source.CanWrite)
             return Answer.Failed<WriteProposal>(Messages.NoWriter, Messages.NoWriterHint);
@@ -67,8 +68,8 @@ public sealed class Writes(
     public async Task<Answer<WriteProposal>> ApplyAsync(string id, CancellationToken cancellationToken)
     {
         var place = copy.Current();
-        if (place.Value is not { } current)
-            return Answer.Failed<WriteProposal>(place.Error!, place.Hint);
+        if (!place.TryGet(out var current))
+            return place.As<WriteProposal>();
 
         var claimed = await ClaimAsync(id.Trim(), current.Task, cancellationToken);
         if (claimed.Value is not { } proposal)
@@ -157,8 +158,8 @@ public sealed class Writes(
     private async Task<Answer<long>> WrittenAsync(WriteProposal proposal, CancellationToken cancellationToken)
     {
         var found = await sources.FindAsync(proposal.Source, cancellationToken);
-        if (found.Value is not { } source)
-            return Answer.Failed<long>(found.Error!, found.Hint);
+        if (!found.TryGet(out var source))
+            return found.As<long>();
 
         return source.Source.Kind is SourceKind.MongoDb
             ? await documents.WriteAsync(source, proposal, cancellationToken)
@@ -180,23 +181,23 @@ public sealed class Writes(
         if (operation is WriteOperation.Insert)
         {
             var inserted = WriteRules.Documents(change, options.Value.MostWritten);
-            if (inserted.Value is not { } added)
-                return Answer.Failed<WriteProposal>(inserted.Error!, inserted.Hint);
+            if (!inserted.TryGet(out var added))
+                return inserted.As<WriteProposal>();
 
             return Answer.Ok(Proposal(reached, collection, operation, "{}", added.ToJsonString(), added.Count, []));
         }
 
         var narrowed = WriteRules.Filter(filter);
-        if (narrowed.Value is not { } where)
-            return Answer.Failed<WriteProposal>(narrowed.Error!, narrowed.Hint);
+        if (!narrowed.TryGet(out var where))
+            return narrowed.As<WriteProposal>();
 
         var update = operation is WriteOperation.Delete ? Answer.Ok(new JsonObject()) : WriteRules.Update(change);
-        if (update.Value is not { } set)
-            return Answer.Failed<WriteProposal>(update.Error!, update.Hint);
+        if (!update.TryGet(out var set))
+            return update.As<WriteProposal>();
 
         var previewed = await documents.PreviewAsync(reached.Source, collection, where.ToJsonString(), options.Value.ProposalSample, cancellationToken);
-        if (previewed.Value is not { } preview)
-            return Answer.Failed<WriteProposal>(previewed.Error!, previewed.Hint);
+        if (!previewed.TryGet(out var preview))
+            return previewed.As<WriteProposal>();
 
         long touched = operation is WriteOperation.UpdateOne ? Math.Min(1, preview.Matched) : preview.Matched;
         if (touched > options.Value.MostWritten)
@@ -211,23 +212,23 @@ public sealed class Writes(
         if (operation is WriteOperation.Insert)
         {
             var inserted = SqlWriteRules.Rows(change, options.Value.MostWritten);
-            if (inserted.Value is not { } added)
-                return Answer.Failed<WriteProposal>(inserted.Error!, inserted.Hint);
+            if (!inserted.TryGet(out var added))
+                return inserted.As<WriteProposal>();
 
             return Answer.Ok(Proposal(reached, table, operation, "{}", added.ToJsonString(), added.Count, []));
         }
 
         var narrowed = SqlWriteRules.Filter(filter);
-        if (narrowed.Value is not { } where)
-            return Answer.Failed<WriteProposal>(narrowed.Error!, narrowed.Hint);
+        if (!narrowed.TryGet(out var where))
+            return narrowed.As<WriteProposal>();
 
         var update = operation is WriteOperation.Delete ? Answer.Ok(new JsonObject()) : SqlWriteRules.Update(change);
-        if (update.Value is not { } set)
-            return Answer.Failed<WriteProposal>(update.Error!, update.Hint);
+        if (!update.TryGet(out var set))
+            return update.As<WriteProposal>();
 
         var previewed = await tables.PreviewAsync(reached.Source, table, where.ToJsonString(), options.Value.ProposalSample, cancellationToken);
-        if (previewed.Value is not { } preview)
-            return Answer.Failed<WriteProposal>(previewed.Error!, previewed.Hint);
+        if (!previewed.TryGet(out var preview))
+            return previewed.As<WriteProposal>();
 
         if (operation is WriteOperation.UpdateOne && preview.Matched != 1)
             return Answer.Failed<WriteProposal>(Messages.NotOne(preview.Matched), Messages.NotOneHint);
@@ -256,12 +257,12 @@ public sealed class Writes(
     private async Task<Answer<WriteContext>> ReachAsync(string name, string collection, CancellationToken cancellationToken)
     {
         var place = copy.Current();
-        if (place.Value is not { } current)
-            return Answer.Failed<WriteContext>(place.Error!, place.Hint);
+        if (!place.TryGet(out var current))
+            return place.As<WriteContext>();
 
         var found = await sources.FindAsync(name.Trim(), cancellationToken);
-        if (found.Value is not { } source)
-            return Answer.Failed<WriteContext>(found.Error!, found.Hint);
+        if (!found.TryGet(out var source))
+            return found.As<WriteContext>();
 
         if (source.Source.Kind is not SourceKind.MongoDb && !SqlWriteRules.IsTable(collection))
             return Answer.Failed<WriteContext>(Messages.SqlTableBad(collection), Messages.CollectionsHint(source.Source));
@@ -295,5 +296,5 @@ public sealed class Writes(
         && CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(key), System.Text.Encoding.UTF8.GetBytes(options.Value.ApprovalKey));
 
     /// <summary>The source a write goes to, and the copy of the task that proposes it.</summary>
-    private sealed record WriteContext(ReachableSource Source, CopyPlace Copy);
+    private sealed record WriteContext(ReachableSource Source, WorkspacePlace<string> Copy);
 }

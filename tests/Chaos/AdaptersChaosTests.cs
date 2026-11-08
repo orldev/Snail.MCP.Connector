@@ -66,9 +66,7 @@ public sealed class JournalChaosTests
     private static Queries Queries(Fakes fakes, ITables tables)
     {
         var options = Microsoft.Extensions.Options.Options.Create(new ConnectorOptions());
-        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
-        context.Request.QueryString = new Microsoft.AspNetCore.Http.QueryString($"?root={fakes.Root}");
-        var copy = new SessionCopy(new Microsoft.AspNetCore.Http.HttpContextAccessor { HttpContext = context }, options);
+        var copy = Fakes.Copy(fakes.Root, options);
 
         return new Queries(new Fakes.SourceList(fakes.Sources), fakes.Database, tables, fakes.Written, new TableFiles(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions())), copy, TimeProvider.System, options);
     }

@@ -119,8 +119,8 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
             return await GuardedAsync(source, () => InsertAsync(documents, proposal.Change, cancellationToken), Seconds);
 
         var matching = await GuardedAsync(source, () => MatchingAsync(documents, proposal, cancellationToken), Seconds);
-        if (matching.Value is not { } ids)
-            return Answer.Failed<long>(matching.Error!, matching.Hint);
+        if (!matching.TryGet(out var ids))
+            return matching.As<long>();
 
         if (ids.Count > proposal.Matched)
             return Answer.Failed<long>(Messages.Changed(ids.Count, proposal.Matched));

@@ -125,14 +125,17 @@ A source is one KV v2 secret in the stand's Vault, under `secret/connectors/<nam
 
 The settings file `connector`, then the `SNAIL_MCP_CONNECTOR_` variables, which win: `VAULT_ADDRESS`, `VAULT_TOKEN` (read
 and list under the path and nothing else), `VAULT_MOUNT` (`secret`), `VAULT_PATH` (`connectors`), `WORKSPACES_ROOT`
-(`/workspaces`, where exports land), `URL` (`http://0.0.0.0:8830/`, its port on every interface of the container),
+(`/workspaces`, where exports land), `URL` or `PORT` (`http://127.0.0.1:8830/`; inside the image its port on every
+interface, the port the container publishes being the boundary, and on loopback alone elsewhere: `LISTENS_ON_EVERY_INTERFACE`,
+a `0.0.0.0` URL or one beyond loopback outside a container are refused at start, naming the variable),
 `ROWS` (50), `MOST_ROWS` (200), `MOST_BYTES` (65536), `MOST_EXPORT_ROWS` (100000), `MOST_EXPORT_COLUMNS` (1000),
 `EXPORT_SECONDS` (600), `SAMPLE` (200), `QUERY_SECONDS` (30), `JOURNAL_DAYS` (365: the journal, and the proposals with
 their samples of rows), `APPROVAL_KEY` (empty: writes off), `MOST_WRITTEN` (1000), `PROPOSAL_SAMPLE` (3),
 `PROPOSAL_DAYS` (7).
 
 The server is the standard's container host: a session for every client, a request a browser makes refused, the heap
-trimmed when idle. The address a session opens names its task (`?root=`) and the tools it may use (`?tool=`); nothing
+trimmed when idle. The address a session opens names its task (`?root=`) and the tools it may use (`?tool=`): a tool it
+does not name is left out of the list, and a call to it is refused in the envelope, `type` `notGranted`. Nothing
 else checks who calls, so the server belongs on the stand's own network, reached by the platform's workers alone.
 
 ```bash

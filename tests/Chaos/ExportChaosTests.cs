@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Adapters;
 using Snail.MCP.Connector.Application;
@@ -65,9 +64,7 @@ public sealed class ExportChaosTests(ITestOutputHelper output) : IDisposable
         var fakes = new Fakes { Root = $"{_root}/{Fakes.TaskId}/step-0" };
         fakes.Written.IsDown = true;
         var options = Options.Create(new ConnectorOptions { WorkspacesRoot = _root });
-        var context = new DefaultHttpContext();
-        context.Request.QueryString = new QueryString($"?root={fakes.Root}");
-        var copy = new SessionCopy(new HttpContextAccessor { HttpContext = context }, options);
+        var copy = Fakes.Copy(fakes.Root, options);
         var queries = new Queries(new Fakes.SourceList(fakes.Sources), fakes.Database, fakes.Tables, fakes.Written, new TableFiles(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions())), copy, TimeProvider.System, options);
 
         var exported = await queries.ExportAsync("sales", "orders", "{}", null, null, "csv", "orders", CancellationToken.None);

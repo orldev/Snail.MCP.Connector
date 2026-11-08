@@ -33,14 +33,14 @@ public sealed partial class ToolCatalogTests
     public void Kinds_EveryEngine_IsNamed()
     {
         foreach (var kind in Enum.GetValues<SourceKind>())
-            Assert.Contains(ToolResponse.Word(kind), Words(ToolDescriptions.Kinds));
+            Assert.Contains(ToolAnswer.Word(kind), Words(ToolDescriptions.Kinds));
     }
 
     [Fact]
     public void Formats_EveryFormat_IsNamed()
     {
         foreach (var format in Enum.GetValues<TableFormat>())
-            Assert.Contains(ToolResponse.Word(format), Words(ToolDescriptions.Formats));
+            Assert.Contains(ToolAnswer.Word(format), Words(ToolDescriptions.Formats));
     }
 
     [Fact]

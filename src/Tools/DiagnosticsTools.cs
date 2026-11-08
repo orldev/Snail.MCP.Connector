@@ -29,6 +29,6 @@ public sealed class DiagnosticsTools(ISources sources, IOptions<ConnectorOptions
             ["querySeconds"] = settings.QuerySeconds
         };
 
-        return ToolResponse.Success(state);
+        return ToolAnswer.Ok(state);
     }
 }

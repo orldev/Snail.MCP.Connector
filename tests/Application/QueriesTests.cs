@@ -1,4 +1,5 @@
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Tests.Application;
 
@@ -65,6 +66,31 @@ public sealed class QueriesTests
 
         Assert.Equal(Messages.NoCopy, counted.Error);
         Assert.Empty(_fakes.Database.Asked);
+    }
+
+    /// <summary>Every reason the SDK gives for a root that names no task's copy, in this server's words.</summary>
+    [Theory]
+    [InlineData("", Messages.NoCopy, "noRoot")]
+    [InlineData("   ", Messages.NoCopy, "noRoot")]
+    [InlineData("/elsewhere/task-1/step-0", "is not a task's copy", "outside")]
+    [InlineData("/workspaces", "is not a task's copy", "outside")]
+    [InlineData("/workspaces/task-1/../../etc", "is not a task's copy", "malformed")]
+    [InlineData("/workspaces/Not_A_Task/step-0", "is not a task's copy", "notATask")]
+    public void Of_RootThatNamesNoCopy_IsRefusedInTheServersWords(string root, string said, string type)
+    {
+        var place = SessionCopy.Of(root, "/workspaces");
+
+        Assert.False(place.IsSuccess);
+        Assert.Contains(said, place.Error, StringComparison.Ordinal);
+        Assert.Equal(type, place.Type);
+    }
+
+    [Fact]
+    public void Of_TaskCopy_IsTheTaskAndTheCopy()
+    {
+        var place = SessionCopy.Of("/workspaces/task-1/step-3", "/workspaces");
+
+        Assert.Equal(new WorkspacePlace<string>("task-1", "/workspaces/task-1/step-3"), place.Value);
     }
 
     [Fact]
