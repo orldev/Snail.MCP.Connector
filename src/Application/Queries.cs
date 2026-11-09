@@ -25,7 +25,7 @@ public sealed partial class Queries(
     IOptions<ConnectorOptions> options)
 {
     /// <summary>Every source declared on the stand.</summary>
-    public Task<Answer<IReadOnlyList<Source>>> SourcesAsync(CancellationToken cancellationToken) => sources.ListAsync(cancellationToken);
+    public Task<Answer<DeclaredSources>> SourcesAsync(CancellationToken cancellationToken) => sources.ListAsync(cancellationToken);
 
     /// <summary>The collections or tables of a source an agent may read, among the ones that exist.</summary>
     public async Task<Answer<SourceCollections>> CollectionsAsync(string source, CancellationToken cancellationToken)

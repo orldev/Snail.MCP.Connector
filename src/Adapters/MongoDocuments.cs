@@ -114,7 +114,10 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
         if (source.Access.WriteUri is not { } uri)
             return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
 
-        var documents = _writers.GetOrAdd(uri, Writer).GetDatabase(source.Source.Database).GetCollection<BsonDocument>(proposal.Collection);
+        var writable = await GuardedAsync(source, () => Task.FromResult(Writable(uri, source, proposal.Collection)), Seconds);
+        if (!writable.TryGet(out var documents))
+            return writable.As<long>();
+
         if (proposal.Operation is WriteOperation.Insert)
             return await GuardedAsync(source, () => InsertAsync(documents, proposal.Change, cancellationToken), Seconds);
 
@@ -181,6 +184,11 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
 
         return added.Length;
     }
+
+    /// <summary>The collection as the writing user reaches it, its client made once per connection string.</summary>
+    /// <remarks>Made inside the guard: a connection string the driver cannot read throws here, and is answered in the database's words like any other failure.</remarks>
+    private IMongoCollection<BsonDocument> Writable(string uri, ReachableSource source, string collection) =>
+        _writers.GetOrAdd(uri, Writer).GetDatabase(source.Source.Database).GetCollection<BsonDocument>(collection);
 
     private static MongoClient Writer(string uri)
     {

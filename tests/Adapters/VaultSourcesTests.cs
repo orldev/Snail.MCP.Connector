@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Adapters;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Configuration;
+using Snail.MCP.Connector.Tools;
 
 namespace Snail.MCP.Connector.Tests.Adapters;
 
@@ -61,7 +62,7 @@ public sealed class VaultSourcesTests
 
         var listed = await Sources(vault).ListAsync(CancellationToken.None);
 
-        Assert.Equal(["crm", "sales"], listed.Value!.Select(source => source.Name));
+        Assert.Equal(["crm", "sales"], listed.Value!.Sources.Select(source => source.Name));
         Assert.All(vault.Tokens, token => Assert.Equal("s.reader", token));
     }
 
@@ -78,8 +79,29 @@ public sealed class VaultSourcesTests
 
         var listed = await Sources(vault).ListAsync(CancellationToken.None);
 
-        Assert.Equal(["crm"], listed.Value!.Select(source => source.Name));
-        Assert.Contains(Messages.SourceIncomplete("half", "readUri"), listed.Hint, StringComparison.Ordinal);
+        Assert.Equal(["crm"], listed.Value!.Sources.Select(source => source.Name));
+        Assert.Contains(Messages.SourceIncomplete("half", "readUri"), Assert.Single(listed.Value.Unread), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The diagnosis counts the sources it could read and names the ones it left out. The listing carried them in the
+    /// hint of a success, which only connector_sources read back; the diagnosis said one source and nothing more.
+    /// </summary>
+    [Fact]
+    public async Task Diagnose_SecretWithoutWhatItNeeds_CountsTheRestAndNamesIt()
+    {
+        var vault = new Vault(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/secret/metadata/connectors?list=true"] = """{"data":{"keys":["crm","half"]}}""",
+            ["/v1/secret/data/connectors/crm"] = """{"data":{"data":{"kind":"mongodb","database":"crm","collections":"*","readUri":"mongodb://reader:secret@db/crm"}}}""",
+            ["/v1/secret/data/connectors/half"] = """{"data":{"data":{"kind":"mongodb","database":"half"}}}"""
+        });
+
+        var result = await new DiagnosticsTools(Sources(vault), Options.Create(new ConnectorOptions())).DiagnoseAsync();
+
+        Assert.True(result.IsOk(), result.Text());
+        Assert.Equal(1, result.Data()?["sources"]?.GetValue<int>());
+        Assert.Contains(Messages.SourceIncomplete("half", "readUri"), result.Data()?["note"]?.GetValue<string>(), StringComparison.Ordinal);
     }
 
     [Fact]

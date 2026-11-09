@@ -74,8 +74,8 @@ internal sealed class Fakes
 
     internal sealed class SourceList(Dictionary<string, ReachableSource> sources) : ISources
     {
-        public Task<Answer<IReadOnlyList<Source>>> ListAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(Answer.Ok<IReadOnlyList<Source>>([.. sources.Values.Select(source => source.Source)]));
+        public Task<Answer<DeclaredSources>> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(Answer.Ok(new DeclaredSources([.. sources.Values.Select(source => source.Source)], [])));
 
         public Task<Answer<ReachableSource>> FindAsync(string name, CancellationToken cancellationToken) =>
             Task.FromResult(sources.TryGetValue(name, out var found) ? Answer.Ok(found) : Answer.Failed<ReachableSource>(Messages.NoSource(name), Messages.NoSourceHint));

@@ -133,8 +133,8 @@ a `0.0.0.0` URL or one beyond loopback outside a container are refused at start,
 their samples of rows), `APPROVAL_KEY` (empty: writes off), `MOST_WRITTEN` (1000), `PROPOSAL_SAMPLE` (3),
 `PROPOSAL_DAYS` (7).
 
-The server is the standard's container host: a session for every client, a request a browser makes refused, the heap
-trimmed when idle. The address a session opens names its task (`?root=`) and the tools it may use (`?tool=`): a tool it
+The server is the standard's container host: a session for every client, a request a browser makes refused (at the
+MCP endpoint and at the dashboard's door, `/proposals`), the heap trimmed when idle. The address a session opens names its task (`?root=`) and the tools it may use (`?tool=`): a tool it
 does not name is left out of the list, and a call to it is refused in the envelope, `type` `notGranted`. Nothing
 else checks who calls, so the server belongs on the stand's own network, reached by the platform's workers alone.
 

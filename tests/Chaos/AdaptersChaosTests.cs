@@ -117,3 +117,42 @@ public sealed class MongoChaosTests(MongoFixture mongo) : IClassFixture<MongoFix
         Assert.Null(thrown);
     }
 }
+
+/// <summary>A source whose writing connection string the driver cannot read, met only once a person has allowed a write.</summary>
+public sealed class MongoWriterChaosTests : IDisposable
+{
+    private readonly MongoDocuments _documents = new(Microsoft.Extensions.Options.Options.Create(new ConnectorOptions()));
+
+    public void Dispose() => _documents.Dispose();
+
+    /// <summary>
+    /// The writing client is made before the guard every other call of the adapter goes through: the driver's exception
+    /// left the adapter, and the model was told the server failed inside and to try once more, where the database's words
+    /// would have said the source is misdeclared. The driver hides the password of the string it quotes; nothing else does.
+    /// </summary>
+    [Fact]
+    public async Task WriteAsync_WriterTheDriverCannotRead_AnswersWithoutThePassword()
+    {
+        var source = new ReachableSource(
+            new Source("crm", SourceKind.MongoDb, "crm", [Source.Every]) { CanWrite = true },
+            new SourceAccess("mongodb://reader@db/crm", "mongodb://writer:s3cret@db:notaport/crm"));
+        var proposal = new WriteProposal
+        {
+            Id = "w0000000000000001",
+            Task = "task",
+            Source = "crm",
+            Collection = "deals",
+            Operation = WriteOperation.Delete,
+            Filter = """{"stage": "lost"}""",
+            Change = "{}",
+            Reason = "a test",
+            Matched = 1,
+            At = DateTimeOffset.UtcNow
+        };
+
+        var written = await _documents.WriteAsync(source, proposal, CancellationToken.None);
+
+        Assert.False(written.IsSuccess);
+        Assert.DoesNotContain("s3cret", written.Error, StringComparison.Ordinal);
+    }
+}

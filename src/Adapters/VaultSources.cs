@@ -24,27 +24,26 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
     public const string Client = "vault";
 
     /// <inheritdoc />
-    public async Task<Answer<IReadOnlyList<Source>>> ListAsync(CancellationToken cancellationToken)
+    public async Task<Answer<DeclaredSources>> ListAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Value.VaultAddress))
-            return Answer.Failed<IReadOnlyList<Source>>(Messages.NoVault, Messages.NoVaultHint);
+            return Answer.Failed<DeclaredSources>(Messages.NoVault, Messages.NoVaultHint);
 
         var listed = await ReadAsync($"metadata/{options.Value.VaultPath}?list=true", cancellationToken);
         if (listed.Error is not null)
-            return Answer.Failed<IReadOnlyList<Source>>(listed.Error, listed.Hint);
+            return Answer.Failed<DeclaredSources>(listed.Error, listed.Hint);
 
         IReadOnlyList<string> names = [.. (listed.Value?["data"]?["keys"] as JsonArray ?? []).Select(key => key?.GetValue<string>() ?? string.Empty).Where(IsName)];
         if (names.Count == 0)
-            return Answer.Failed<IReadOnlyList<Source>>(Messages.NoSources, Messages.NoSourcesHint);
+            return Answer.Failed<DeclaredSources>(Messages.NoSources, Messages.NoSourcesHint);
 
         IReadOnlyList<string> ordered = [.. names.Order(StringComparer.Ordinal)];
         var found = await Task.WhenAll(ordered.Select(name => FindAsync(name, cancellationToken)));
 
         IReadOnlyList<Source> sources = [.. found.Where(source => source.Value is not null).Select(source => source.Value!.Source)];
         IReadOnlyList<string> unread = [.. found.Where(source => source.Value is null).Select(source => source.Error!)];
-        string? note = unread.Count == 0 ? null : Messages.SourcesUnread(unread);
 
-        return Answer.Ok(sources) with { Hint = note };
+        return Answer.Ok(new DeclaredSources(sources, unread));
     }
 
     /// <inheritdoc />

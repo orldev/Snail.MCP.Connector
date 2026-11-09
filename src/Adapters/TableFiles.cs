@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Adapters;
 
@@ -41,8 +42,7 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
     public async Task<Answer<ExportedFile>> WriteAsync(string copy, string file, TableFormat format, IAsyncEnumerable<string> rows, int most, CancellationToken cancellationToken)
     {
         string spool = Path.Combine(Path.GetTempPath(), $"s3l-connector-{Guid.NewGuid():N}.jsonl");
-        string path = Path.Combine(copy, Folder, file);
-        string written = Path.Combine(copy, Folder, $".{file}.{Guid.NewGuid():N}.partial");
+        string? written = null;
 
         try
         {
@@ -50,7 +50,14 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
             if (!spooled.TryGet(out var table))
                 return spooled.As<ExportedFile>();
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var reached = ExportsOf(copy);
+            if (!reached.TryGet(out var folder))
+                return reached.As<ExportedFile>();
+
+            string path = Path.Combine(folder, file);
+            written = Path.Combine(folder, $".{file}.{Guid.NewGuid():N}.partial");
+
+            Directory.CreateDirectory(folder);
             if (format is TableFormat.Csv)
                 await CsvAsync(spool, written, table.Columns, cancellationToken);
             else
@@ -67,7 +74,21 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
         }
     }
 
-    private static void Remove(string file)
+    /// <summary>The copy's exports folder with every link on its way followed, or a refusal when it leads out of the copy.</summary>
+    /// <remarks>
+    /// The task's agent writes its own copy, and an <c>exports</c> made a link to another task's copy had the export land
+    /// there. A link that stays inside the copy is followed; the file is written where the walk ended, not through the link.
+    /// </remarks>
+    private static Answer<string> ExportsOf(string copy)
+    {
+        string? root = RealPath.Of(copy);
+        string? folder = RealPath.Of(Path.Combine(copy, Folder));
+        bool isInside = root is not null && folder is not null && folder.StartsWith($"{root.TrimEnd('/')}/", StringComparison.Ordinal);
+
+        return isInside ? Answer.Ok(folder!) : Answer.Failed(Messages.ExportsOutside(Folder), Messages.ExportsOutsideHint, Messages.Outside);
+    }
+
+    private static void Remove(string? file)
     {
         if (File.Exists(file))
             File.Delete(file);

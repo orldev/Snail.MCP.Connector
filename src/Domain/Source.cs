@@ -43,6 +43,16 @@ public sealed record Source(string Name, SourceKind Kind, string Database, IRead
 /// <param name="WriteUri">The connection string of the user that may write; null when there is none.</param>
 public sealed record SourceAccess(string ReadUri, string? WriteUri);
 
+/// <summary>The sources a listing could read, and why it left out the ones it could not.</summary>
+/// <remarks>
+/// A secret a person filled in half is named rather than missing without a word. What was left out is part of what was
+/// listed, not the hint of a failure: <c>Answer.Hint</c> says what to do about a failure, and a success's hint never
+/// reaches the envelope, so connector_diagnose dropped it.
+/// </remarks>
+/// <param name="Sources">The sources read, without their credentials.</param>
+/// <param name="Unread">What each source left out said about itself; empty when every one was read.</param>
+public sealed record DeclaredSources(IReadOnlyList<Source> Sources, IReadOnlyList<string> Unread);
+
 /// <summary>A source together with how to reach it.</summary>
 /// <param name="Source">What the source is.</param>
 /// <param name="Access">How to reach it.</param>

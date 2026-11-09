@@ -101,6 +101,14 @@ public sealed class ProcessContractTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
     }
 
+    /// <summary>
+    /// The dashboard's door refuses a page in a browser as the MCP endpoint does: the dashboard asks it from the stand's
+    /// own backend, and a page that reaches the address — DNS rebinding, a link — is turned away before the key is read.
+    /// </summary>
+    [Fact]
+    public async Task ApprovalDoor_AsServed_RefusesBrowsersOnly() =>
+        Assert.Empty(await HttpGuards.ProblemsAsync(new Uri(_server.Address, "/proposals/w0123456789abcdef/decision")));
+
     /// <summary>A page in a browser that reaches the server's address — DNS rebinding, a link — is refused before any tool, and an agent's client is not.</summary>
     [Fact]
     public async Task Endpoint_AsServed_RefusesBrowsersOnly() =>

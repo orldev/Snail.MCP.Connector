@@ -85,6 +85,15 @@ public static class Messages
     /// <summary>An export file name that is not a plain name.</summary>
     public const string BadFileName = "The file name has to be a plain name of letters, digits, dots, dashes and underscores, without a folder.";
 
+    /// <summary>An exports folder that is a link leading out of the working copy.</summary>
+    public static string ExportsOutside(string folder) => $"The working copy's {folder} folder leads out of the copy, so nothing is exported into it.";
+
+    /// <summary>What to do about it.</summary>
+    public const string ExportsOutsideHint = "Remove the link in place of the folder, or make it lead to a folder inside the copy, and export again.";
+
+    /// <summary>The type of a refusal for a place outside the session's copy.</summary>
+    public const string Outside = "outside";
+
     /// <summary>A format the export does not write.</summary>
     public const string BadFormat = "The export writes csv or xlsx.";
 

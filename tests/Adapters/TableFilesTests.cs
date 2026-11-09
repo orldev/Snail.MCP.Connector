@@ -91,6 +91,45 @@ public sealed class TableFilesTests : IDisposable
         Assert.DoesNotContain("secret", written.Error, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The task's agent writes its own copy, and makes <c>exports</c> a link to another task's copy: the export of its
+    /// rows lands there, in a copy this session was never given.
+    /// </summary>
+    [Fact]
+    public async Task WriteAsync_ExportsALinkOutOfTheCopy_IsRefusedAndWritesNothingThere()
+    {
+        string elsewhere = TestFolder.Create();
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(_copy, "exports"), elsewhere);
+
+            var written = await Files().WriteAsync(_copy, "orders.csv", TableFormat.Csv, Stream(["""{"n": 1}"""]), 100, CancellationToken.None);
+
+            Assert.False(written.IsSuccess);
+            Assert.Equal("outside", written.Type);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+        }
+        finally
+        {
+            Directory.Delete(elsewhere, recursive: true);
+        }
+    }
+
+    /// <summary>A link that stays inside the copy is the copy's own business: the export follows it.</summary>
+    [Fact]
+    public async Task WriteAsync_ExportsALinkInsideTheCopy_WritesThere()
+    {
+        string inside = Directory.CreateDirectory(Path.Combine(_copy, "out")).FullName;
+        Directory.CreateSymbolicLink(Path.Combine(_copy, "exports"), inside);
+
+        var written = await Files().WriteAsync(_copy, "orders.csv", TableFormat.Csv, Stream(["""{"n": 1}"""]), 100, CancellationToken.None);
+
+        Assert.True(written.IsSuccess, written.Error);
+        Assert.True(File.Exists(Path.Combine(inside, "orders.csv")));
+    }
+
+    private static TableFiles Files() => new(Microsoft.Extensions.Options.Options.Create(new Snail.MCP.Connector.Configuration.ConnectorOptions()));
+
     private static async IAsyncEnumerable<string> Stream(IEnumerable<string> rows, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         foreach (string row in rows)

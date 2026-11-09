@@ -23,8 +23,8 @@ public sealed class DiagnosticsTools(ISources sources, IOptions<ConnectorOptions
         {
             ["server"] = Snail.Sdk.Mcp.Hosting.ServerIdentity.VersionOf(typeof(DiagnosticsTools).Assembly),
             ["vault"] = string.IsNullOrWhiteSpace(settings.VaultAddress) ? null : settings.VaultAddress,
-            ["sources"] = listed.Value?.Count ?? 0,
-            ["note"] = listed.Error,
+            ["sources"] = listed.Value?.Sources.Count ?? 0,
+            ["note"] = listed.TryGet(out var declared) ? ConnectorAnswers.Note(declared) : listed.Error,
             ["mostRows"] = settings.MostRows,
             ["querySeconds"] = settings.QuerySeconds
         };

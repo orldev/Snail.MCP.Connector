@@ -9,9 +9,12 @@ namespace Snail.MCP.Connector.Tools;
 /// <remarks>The envelope — ok first, error and hint on a failure, flagged an error — is the SDK's; the fields inside the data are this server's.</remarks>
 public static class ConnectorAnswers
 {
-    /// <summary>The sources, without their credentials.</summary>
-    public static CallToolResult From(Answer<IReadOnlyList<Source>> answer) =>
-        ToolAnswer.From(answer, sources => new JsonObject { ["sources"] = new JsonArray([.. sources.Select(Data)]), ["note"] = answer.Hint });
+    /// <summary>The sources, without their credentials, and a note naming the ones left out.</summary>
+    public static CallToolResult From(Answer<DeclaredSources> answer) =>
+        ToolAnswer.From(answer, listed => new JsonObject { ["sources"] = new JsonArray([.. listed.Sources.Select(Data)]), ["note"] = Note(listed) });
+
+    /// <summary>The sources a listing left out, in words; null when it left out none.</summary>
+    public static string? Note(DeclaredSources listed) => listed.Unread.Count == 0 ? null : Messages.SourcesUnread(listed.Unread);
 
     /// <summary>The collections of a source an agent may read.</summary>
     public static CallToolResult From(Answer<SourceCollections> answer) =>
