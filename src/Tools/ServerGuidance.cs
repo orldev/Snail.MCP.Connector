@@ -17,6 +17,8 @@ public static class ServerGuidance
         it with connector_export and name the file in your answer. A change to the data is proposed with
         connector_propose_write and runs only after the stand's owner or an administrator allows it.
 
-        Every answer is JSON with an ok flag. When ok is false nothing happened: read error and hint.
+        Every answer is JSON with an ok flag, and a failed call is also flagged isError. When ok is false, read error and
+        hint and fix the call instead of retrying it verbatim. An export whose job failed after it started answers ok false
+        as well: it was begun in the journal, and no file was left in the working copy.
         """;
 }

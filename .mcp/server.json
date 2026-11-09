@@ -13,7 +13,31 @@
         "url": "http://127.0.0.1:8830/mcp"
       },
       "packageArguments": [],
-      "environmentVariables": []
+      "environmentVariables": [
+        {
+          "name": "SNAIL_MCP_CONNECTOR_VAULT_ADDRESS",
+          "description": "Vault's address, where the sources and their connection strings are declared.",
+          "isRequired": true
+        },
+        {
+          "name": "SNAIL_MCP_CONNECTOR_VAULT_TOKEN",
+          "description": "A Vault token that may read and list under the sources' path and nothing else.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SNAIL_MCP_CONNECTOR_APPROVAL_KEY",
+          "description": "The key the dashboard's door asks for before a person allows a write; empty keeps writes off.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SNAIL_MCP_CONNECTOR_WORKSPACES_ROOT",
+          "description": "Folder the platform's working copies lie under, where exports land. Default: /workspaces.",
+          "isRequired": false,
+          "default": "/workspaces"
+        }
+      ]
     }
   ],
   "repository": {
