@@ -29,14 +29,14 @@ public static class ApprovalEndpointExtensions
 
             app.MapGet("/proposals/{id}", async (string id, HttpRequest request, Writes writes, CancellationToken cancellationToken) =>
                 await writes.ShowAsync(id, request.Headers[KeyHeader].FirstOrDefault(), cancellationToken) is { } proposal
-                    ? Results.Text(ConnectorAnswers.Data(proposal).ToJsonString(ToolAnswer.Wire), "application/json")
+                    ? Results.Text(AnswerFields.Of(proposal).ToJsonString(ToolAnswer.Wire), "application/json")
                     : Results.NotFound());
 
             app.MapPost("/proposals/{id}/decision", async (string id, ProposalDecision decision, HttpRequest request, Writes writes, CancellationToken cancellationToken) =>
                 await writes.DecideAsync(id, request.Headers[KeyHeader].FirstOrDefault(), decision.Allow, decision.By, decision.Comment, cancellationToken) switch
                 {
                     null => Results.NotFound(),
-                    { IsSuccess: true, Value: { } proposal } => Results.Text(ConnectorAnswers.Data(proposal).ToJsonString(ToolAnswer.Wire), "application/json"),
+                    { IsSuccess: true, Value: { } proposal } => Results.Text(AnswerFields.Of(proposal).ToJsonString(ToolAnswer.Wire), "application/json"),
                     var refused => Results.Text(ToolAnswer.Text(ToolAnswer.Failed(refused)), "application/json", statusCode: StatusCodes.Status503ServiceUnavailable)
                 });
 

@@ -1,7 +1,9 @@
 using System.Text.Json.Nodes;
 using Snail.MCP.Connector.Application;
+using Snail.MCP.Connector.Configuration;
 using Snail.MCP.Connector.Tests.Application;
 using Snail.MCP.Connector.Tools;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Jobs;
 
 namespace Snail.MCP.Connector.Tests.Tools;
@@ -13,7 +15,7 @@ namespace Snail.MCP.Connector.Tests.Tools;
 public sealed class ExportJobTests
 {
     private readonly Fakes _fakes = new();
-    private readonly Jobs _jobs = new(Snail.MCP.Connector.Extensions.ConnectorServerExtensions.Short);
+    private readonly Jobs _jobs = new(ConnectorSettings.Name);
 
     [Fact]
     public async Task ExportAsync_EndingWithinTheWait_AnswersWithTheFile()
@@ -96,6 +98,7 @@ public sealed class ExportJobTests
 
         Assert.True(result.IsError);
         Assert.Contains(Messages.BadFormat, result.Error(), StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, result.Type());
         Assert.Empty(_jobs.InFlight);
         Assert.Empty(_jobs.Recent);
         Assert.Empty(_fakes.Written.Records);
@@ -110,6 +113,7 @@ public sealed class ExportJobTests
 
         Assert.True(result.IsError);
         Assert.Contains("wait", result.Error(), StringComparison.Ordinal);
+        Assert.Equal(ToolFailures.Arguments, result.Type());
         Assert.Empty(_fakes.Written.Records);
     }
 

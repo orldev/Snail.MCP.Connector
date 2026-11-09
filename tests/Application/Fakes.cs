@@ -78,7 +78,7 @@ internal sealed class Fakes
             Task.FromResult(Answer.Ok(new DeclaredSources([.. sources.Values.Select(source => source.Source)], [])));
 
         public Task<Answer<ReachableSource>> FindAsync(string name, CancellationToken cancellationToken) =>
-            Task.FromResult(sources.TryGetValue(name, out var found) ? Answer.Ok(found) : Answer.Failed<ReachableSource>(Messages.NoSource(name), Messages.NoSourceHint));
+            Task.FromResult(sources.TryGetValue(name, out var found) ? Answer.Ok(found) : Answer.Failed<ReachableSource>(Messages.NoSource(name), Messages.NoSourceHint, FailureTypes.NoSuchSource));
     }
 
     internal sealed class Documents : IDocuments

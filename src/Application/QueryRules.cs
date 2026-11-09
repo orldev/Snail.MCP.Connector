@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -29,24 +30,24 @@ public static class QueryRules
             return Answer.Ok(new JsonObject());
 
         if (Parsed(text) is not JsonObject document)
-            return Answer.Failed<JsonObject>(Messages.NotAnObject(what), Messages.ExtendedJsonHint);
+            return Answer.Failed(Messages.NotAnObject(what), Messages.ExtendedJsonHint, ToolFailures.Arguments);
 
-        return Refused(document) is { } refused ? Answer.Failed<JsonObject>(refused, Messages.ReadOnlyHint) : Answer.Ok(document);
+        return Refused(document) is { } refused ? Answer.Failed(refused, Messages.ReadOnlyHint, FailureTypes.NotAllowed) : Answer.Ok(document);
     }
 
     /// <summary>The pipeline as its stages, or why it is not one this server runs against the source.</summary>
     public static Answer<JsonArray> Pipeline(string? text, Source source)
     {
         if (Parsed(text ?? string.Empty) is not JsonArray stages || stages.Count == 0 || stages.Any(stage => stage is not JsonObject))
-            return Answer.Failed<JsonArray>(Messages.NotAPipeline, Messages.ExtendedJsonHint);
+            return Answer.Failed(Messages.NotAPipeline, Messages.ExtendedJsonHint, ToolFailures.Arguments);
 
         if (Refused(stages) is { } refused)
-            return Answer.Failed<JsonArray>(refused, Messages.ReadOnlyHint);
+            return Answer.Failed(refused, Messages.ReadOnlyHint, FailureTypes.NotAllowed);
 
         IReadOnlyList<string> joined = Joined(stages);
         string? kept = joined.FirstOrDefault(collection => !source.Allows(collection));
 
-        return kept is null ? Answer.Ok(stages) : Answer.Failed<JsonArray>(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source));
+        return kept is null ? Answer.Ok(stages) : Answer.Failed(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source), FailureTypes.NotAllowed);
     }
 
     /// <summary>The first forbidden operator the node holds at any depth, as a refusal; null when it holds none.</summary>

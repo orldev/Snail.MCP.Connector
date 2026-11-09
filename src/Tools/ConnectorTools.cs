@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Jobs;
 
 namespace Snail.MCP.Connector.Tools;
@@ -15,7 +16,7 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
     [McpServerTool(Name = "connector_sources", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(ToolDescriptions.Sources)]
     public async Task<CallToolResult> SourcesAsync(CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.SourcesAsync(cancellationToken));
+        ToolAnswer.From(await queries.SourcesAsync(cancellationToken), AnswerFields.Of);
 
     /// <summary>Reads a source's collections, or one collection's shape.</summary>
     [McpServerTool(Name = "connector_schema", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -25,8 +26,8 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         [Description(ToolDescriptions.SchemaCollection)] string? collection = null,
         CancellationToken cancellationToken = default) =>
         string.IsNullOrWhiteSpace(collection)
-            ? ConnectorAnswers.From(await queries.CollectionsAsync(source, cancellationToken))
-            : ConnectorAnswers.From(await queries.ShapeAsync(source, collection, cancellationToken));
+            ? ToolAnswer.From(await queries.CollectionsAsync(source, cancellationToken), AnswerFields.Of)
+            : ToolAnswer.From(await queries.ShapeAsync(source, collection, cancellationToken), AnswerFields.Of);
 
     /// <summary>Reads the documents a filter matches.</summary>
     [McpServerTool(Name = "connector_find", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -39,7 +40,7 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         [Description(ToolDescriptions.Sort)] string? sort = null,
         [Description(ToolDescriptions.Limit)] int? limit = null,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.FindAsync(source, collection, filter, projection, sort, limit, cancellationToken));
+        ToolAnswer.From(await queries.FindAsync(source, collection, filter, projection, sort, limit, cancellationToken), AnswerFields.Of);
 
     /// <summary>Runs an aggregation pipeline.</summary>
     [McpServerTool(Name = "connector_aggregate", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -50,7 +51,7 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         [Description(ToolDescriptions.Pipeline)] string pipeline,
         [Description(ToolDescriptions.Limit)] int? limit = null,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.AggregateAsync(source, collection, pipeline, limit, cancellationToken));
+        ToolAnswer.From(await queries.AggregateAsync(source, collection, pipeline, limit, cancellationToken), AnswerFields.Of);
 
     /// <summary>Counts the documents a filter matches.</summary>
     [McpServerTool(Name = "connector_count", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -60,7 +61,7 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         [Description(ToolDescriptions.Collection)] string collection,
         [Description(ToolDescriptions.Filter)] string? filter = null,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.CountAsync(source, collection, filter, cancellationToken));
+        ToolAnswer.From(await queries.CountAsync(source, collection, filter, cancellationToken), AnswerFields.Of);
 
     /// <summary>Runs a SELECT on a SQL source.</summary>
     [McpServerTool(Name = "connector_query", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -70,7 +71,7 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         [Description(ToolDescriptions.Select)] string select,
         [Description(ToolDescriptions.Limit)] int? limit = null,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.QueryAsync(source, select, limit, cancellationToken));
+        ToolAnswer.From(await queries.QueryAsync(source, select, limit, cancellationToken), AnswerFields.Of);
 
     /// <summary>Writes rows into a table file of the task, answered within the wait or as the job writing it.</summary>
     /// <remarks>
@@ -92,13 +93,13 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
         CancellationToken cancellationToken = default)
     {
         if (wait is < 0 or > ToolDescriptions.LongestWait)
-            return ToolAnswer.Failed(Messages.WaitOutside(wait, ToolDescriptions.LongestWait), Messages.WaitOutsideHint);
+            return ToolAnswer.Failed(Messages.WaitOutside(wait, ToolDescriptions.LongestWait), Messages.WaitOutsideHint, ToolFailures.Arguments);
 
         var prepared = await queries.PrepareExportAsync(source, collection, filter, pipeline, select, format, file, cancellationToken);
         if (!prepared.TryGet(out var export))
             return ToolAnswer.Failed(prepared);
 
-        var job = jobs.Start(Export, export.Task, async (_, token) => (await export.WriteAsync(token)).Map(ConnectorAnswers.Data), ToolAnswer.ObjectInfo);
+        var job = jobs.Start(Export, export.Task, async (_, token) => (await export.WriteAsync(token)).Map(AnswerFields.Of), ToolAnswer.ObjectInfo);
         var report = await job.ForAsync(TimeSpan.FromSeconds(wait), cancellationToken);
         var running = new JsonObject { ["file"] = export.File, ["note"] = Messages.ExportRunning(export.File) };
 
@@ -114,5 +115,5 @@ public sealed class ConnectorTools(Queries queries, Jobs jobs)
     public async Task<CallToolResult> JournalAsync(
         [Description(ToolDescriptions.JournalMost)] int most = 20,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await queries.JournalAsync(most, cancellationToken));
+        ToolAnswer.From(await queries.JournalAsync(most, cancellationToken), AnswerFields.Of);
 }

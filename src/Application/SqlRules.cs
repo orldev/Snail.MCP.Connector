@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -39,22 +40,22 @@ public static partial class SqlRules
         string bare = Bare(text, source.Kind);
 
         if (bare.Length == 0)
-            return Answer.Failed<string>(Messages.NotASelect, Messages.SelectHint);
+            return Answer.Failed(Messages.NotASelect, Messages.SelectHint, ToolFailures.Arguments);
 
         if (bare.Contains(';', StringComparison.Ordinal))
-            return Answer.Failed<string>(Messages.OneStatement, Messages.SelectHint);
+            return Answer.Failed(Messages.OneStatement, Messages.SelectHint, ToolFailures.Arguments);
 
         IReadOnlyList<string> words = [.. Word().Matches(bare).Select(match => match.Value.ToLowerInvariant())];
         if (words.Count == 0 || words[0] is not ("select" or "with"))
-            return Answer.Failed<string>(Messages.NotASelect, Messages.SelectHint);
+            return Answer.Failed(Messages.NotASelect, Messages.SelectHint, ToolFailures.Arguments);
 
         if (words.FirstOrDefault(word => Forbidden.Contains(word, StringComparer.Ordinal)) is { } forbidden)
-            return Answer.Failed<string>(Messages.SqlForbidden(forbidden.ToUpperInvariant()), Messages.SelectHint);
+            return Answer.Failed(Messages.SqlForbidden(forbidden.ToUpperInvariant()), Messages.SelectHint, FailureTypes.NotAllowed);
 
         IReadOnlySet<string> named = Named(bare);
         string? kept = Tables(bare).FirstOrDefault(table => !named.Contains(table) && !IsAllowed(source, table));
 
-        return kept is null ? Answer.Ok(text) : Answer.Failed<string>(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source));
+        return kept is null ? Answer.Ok(text) : Answer.Failed(Messages.CollectionKept(source.Name, kept), Messages.CollectionsHint(source), FailureTypes.NotAllowed);
     }
 
     /// <summary>The tables a statement reads after FROM and JOIN, each once, in the order written — as the journal names them.</summary>

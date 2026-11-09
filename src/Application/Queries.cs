@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Application;
@@ -145,10 +146,10 @@ public sealed partial class Queries(
             return reached.As<PreparedExport>();
 
         if (!Enum.TryParse(format, ignoreCase: true, out TableFormat table) || !Enum.IsDefined(table))
-            return Answer.Failed<PreparedExport>(Messages.BadFormat);
+            return Answer.Failed(Messages.BadFormat, type: ToolFailures.Arguments);
 
         if (!FileName().IsMatch(file))
-            return Answer.Failed<PreparedExport>(Messages.BadFileName);
+            return Answer.Failed(Messages.BadFileName, type: ToolFailures.Arguments);
 
         string name = Path.HasExtension(file) ? file : $"{file}.{table.ToString().ToLowerInvariant()}";
 
@@ -160,18 +161,21 @@ public sealed partial class Queries(
     private async Task<Answer<PreparedExport>> PrepareDocumentsAsync(QueryContext context, string collection, string? filter, string? pipeline, TableFormat table, string name, CancellationToken cancellationToken)
     {
         if (collection.Length == 0 || string.IsNullOrWhiteSpace(filter) == string.IsNullOrWhiteSpace(pipeline))
-            return Answer.Failed<PreparedExport>(Messages.OneQuery);
+            return Answer.Failed(Messages.OneQuery, type: ToolFailures.Arguments);
 
         var checkedFilter = QueryRules.Document(filter, "filter");
         var checkedPipeline = pipeline is null ? Answer.Ok(new JsonArray()) : QueryRules.Pipeline(pipeline, context.Source.Source);
-        if (checkedFilter.Value is null || checkedPipeline.Value is null)
-            return Answer.Failed<PreparedExport>((checkedFilter.Error ?? checkedPipeline.Error)!, checkedFilter.Hint ?? checkedPipeline.Hint);
+        if (checkedFilter.Value is null)
+            return checkedFilter.As<PreparedExport>();
+
+        if (checkedPipeline.Value is null)
+            return checkedPipeline.As<PreparedExport>();
 
         var query = new DocumentQuery(collection, checkedFilter.Value.ToJsonString(), null, null, Limit(null));
         string? stages = pipeline is null ? null : checkedPipeline.Value.ToJsonString();
         string recorded = new JsonObject { ["filter"] = checkedFilter.Value.DeepClone(), ["pipeline"] = checkedPipeline.Value.DeepClone(), ["file"] = name }.ToJsonString();
         if (!await IsStartedAsync(context, collection, recorded, cancellationToken))
-            return Answer.Failed<PreparedExport>(Messages.JournalDown, Messages.JournalDownHint);
+            return Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
 
         return Answer.Ok(new PreparedExport(context.Copy.Task, $"{ITableFiles.Folder}/{name}", token =>
         {
@@ -191,7 +195,7 @@ public sealed partial class Queries(
         string collection = Journaled(statement, context.Source.Source.Kind);
         string recorded = new JsonObject { ["select"] = statement, ["file"] = name }.ToJsonString();
         if (!await IsStartedAsync(context, collection, recorded, cancellationToken))
-            return Answer.Failed<PreparedExport>(Messages.JournalDown, Messages.JournalDownHint);
+            return Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
 
         return Answer.Ok(new PreparedExport(context.Copy.Task, $"{ITableFiles.Folder}/{name}", token =>
         {
@@ -228,13 +232,13 @@ public sealed partial class Queries(
 
         bool isDocuments = source.Source.Kind is SourceKind.MongoDb;
         if (engine is Engine.Documents && !isDocuments)
-            return Answer.Failed<QueryContext>(Messages.NotDocuments, Messages.SelectHint);
+            return Answer.Failed(Messages.NotDocuments, Messages.SelectHint, ToolFailures.Arguments);
 
         if (engine is Engine.Tables && isDocuments)
-            return Answer.Failed<QueryContext>(Messages.NotTables);
+            return Answer.Failed(Messages.NotTables, type: ToolFailures.Arguments);
 
         if (!string.IsNullOrWhiteSpace(collection) && !SqlRules.IsAllowed(source.Source, collection))
-            return Answer.Failed<QueryContext>(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source));
+            return Answer.Failed(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source), FailureTypes.NotAllowed);
 
         return Answer.Ok(new QueryContext(source, current));
     }
@@ -261,7 +265,7 @@ public sealed partial class Queries(
 
         var written = await journal.WriteAsync(record, cancellationToken);
 
-        return written.Error is null ? answer : Answer.Failed<T>(Messages.JournalDown, Messages.JournalDownHint);
+        return written.Error is null ? answer : Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
     }
 
     /// <summary>The adapter's answer; one that broke its promise to answer in data, as a failed answer the journal takes like any other.</summary>
@@ -278,7 +282,7 @@ public sealed partial class Queries(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return Answer.Failed<T>(Messages.Unreadable(exception.GetType().Name), Messages.UnreadableHint);
+            return Answer.Failed(Messages.Unreadable(exception.GetType().Name), Messages.UnreadableHint, FailureTypes.Unreadable);
         }
     }
 

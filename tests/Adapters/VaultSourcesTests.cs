@@ -47,6 +47,7 @@ public sealed class VaultSourcesTests
 
         Assert.Null(read.Value);
         Assert.Contains(missing, read.Error, StringComparison.Ordinal);
+        Assert.Equal("sourceIncomplete", read.Type);
     }
 
     /// <summary>A listing names the sources and never the users they are read as.</summary>
@@ -110,6 +111,7 @@ public sealed class VaultSourcesTests
         var listed = await Sources(new Vault([])).ListAsync(CancellationToken.None);
 
         Assert.Equal(Messages.NoSources, listed.Error);
+        Assert.Equal("noSources", listed.Type);
     }
 
     [Fact]
@@ -120,6 +122,7 @@ public sealed class VaultSourcesTests
         var found = await sources.FindAsync("sales", CancellationToken.None);
 
         Assert.Equal(Messages.NoVault, found.Error);
+        Assert.Equal("notConfigured", found.Type);
     }
 
     [Theory]
@@ -132,7 +135,19 @@ public sealed class VaultSourcesTests
         var found = await Sources(vault).FindAsync(name, CancellationToken.None);
 
         Assert.Equal(Messages.NoSource(name), found.Error);
+        Assert.Equal("noSuchSource", found.Type);
         Assert.Empty(vault.Tokens);
+    }
+
+    /// <summary>A Vault that refuses the listing is <c>vaultError</c>, told apart from a stand with no source declared.</summary>
+    [Fact]
+    public async Task ListAsync_VaultRefuses_IsTypedVaultError()
+    {
+        var listed = await Sources(new Vault([])).ListAsync(CancellationToken.None);
+        var refused = await new VaultSources(new Clients(new Refusing()), Options.Create(new ConnectorOptions { VaultAddress = "http://vault:8200", VaultToken = "s.reader" })).ListAsync(CancellationToken.None);
+
+        Assert.Equal("noSources", listed.Type);
+        Assert.Equal("vaultError", refused.Type);
     }
 
     private static VaultSources Sources(Vault vault) =>
@@ -141,6 +156,12 @@ public sealed class VaultSourcesTests
     private sealed class Clients(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class Refusing : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
     }
 
     private sealed class Vault(Dictionary<string, string> answers) : HttpMessageHandler

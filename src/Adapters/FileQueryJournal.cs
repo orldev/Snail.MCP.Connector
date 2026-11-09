@@ -48,7 +48,7 @@ public sealed partial class FileQueryJournal(string folder, IOptions<ConnectorOp
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return Answer.Failed<QueryRecord>(Messages.JournalDown, exception.Message);
+            return Answer.Failed(Messages.JournalDown, exception.Message, FailureTypes.JournalDown);
         }
         finally
         {

@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Application;
@@ -30,18 +31,18 @@ public sealed class Writes(
     public async Task<Answer<WriteProposal>> ProposeAsync(string source, string collection, string operation, string? filter, string? change, string reason, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Value.ApprovalKey))
-            return Answer.Failed<WriteProposal>(Messages.NoApprovals, Messages.NoApprovalsHint);
+            return Answer.Failed(Messages.NoApprovals, Messages.NoApprovalsHint, FailureTypes.NotConfigured);
 
         var context = await ReachAsync(source, collection, cancellationToken);
         if (!context.TryGet(out var reached))
             return context.As<WriteProposal>();
 
         if (!reached.Source.Source.CanWrite)
-            return Answer.Failed<WriteProposal>(Messages.NoWriter, Messages.NoWriterHint);
+            return Answer.Failed(Messages.NoWriter, Messages.NoWriterHint, FailureTypes.ReadOnly);
 
         var kind = WriteRules.Operation(operation);
-        if (kind.Error is not null)
-            return Answer.Failed<WriteProposal>(kind.Error);
+        if (!kind.IsSuccess)
+            return kind.As<WriteProposal>();
 
         var shaped = reached.Source.Source.Kind is SourceKind.MongoDb
             ? await ShapeAsync(reached, collection, kind.Value, filter, change, cancellationToken)
@@ -51,7 +52,7 @@ public sealed class Writes(
 
         var proposed = proposal with { Reason = reason.Trim() };
         if (!await IsRecordedAsync(proposed, "propose", proposed.Matched, null, cancellationToken))
-            return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+            return Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
 
         await proposals.SaveAsync(proposed, cancellationToken);
 
@@ -83,7 +84,7 @@ public sealed class Writes(
             : proposal with { State = ProposalState.Approved };
         await proposals.SaveAsync(settled, CancellationToken.None);
 
-        return written.Error is null ? Answer.Ok(settled) : Answer.Failed<WriteProposal>(written.Error, written.Hint);
+        return written.IsSuccess ? Answer.Ok(settled) : written.As<WriteProposal>();
     }
 
     /// <summary>The proposal as the dashboard shows it to a person; null when the key is not the server's.</summary>
@@ -111,7 +112,7 @@ public sealed class Writes(
                 Comment = comment
             };
             if (!await IsRecordedAsync(decided, isAllowed ? "approve" : "reject", decided.Matched, null, cancellationToken))
-                return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+                return Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
 
             await proposals.SaveAsync(decided, CancellationToken.None);
 
@@ -133,16 +134,16 @@ public sealed class Writes(
         try
         {
             if (await proposals.FindAsync(id, cancellationToken) is not { } proposal)
-                return Answer.Failed<WriteProposal>(Messages.NoProposal(id));
+                return Answer.Failed(Messages.NoProposal(id), type: FailureTypes.NoSuchProposal);
 
             if (!string.Equals(proposal.Task, task, StringComparison.Ordinal))
-                return Answer.Failed<WriteProposal>(Messages.OtherTask);
+                return Answer.Failed(Messages.OtherTask, type: FailureTypes.NotYours);
 
             if (Standing(proposal) is { } refused)
                 return refused;
 
             if (!await IsRecordedAsync(proposal, "applying", proposal.Matched, null, cancellationToken))
-                return Answer.Failed<WriteProposal>(Messages.JournalDown, Messages.JournalDownHint);
+                return Answer.Failed(Messages.JournalDown, Messages.JournalDownHint, FailureTypes.JournalDown);
 
             var applying = proposal with { State = ProposalState.Applying };
             await proposals.SaveAsync(applying, CancellationToken.None);
@@ -168,11 +169,11 @@ public sealed class Writes(
 
     private Answer<WriteProposal>? Standing(WriteProposal proposal) => proposal.State switch
     {
-        ProposalState.Pending => Answer.Failed<WriteProposal>(Messages.NotDecided, Messages.NotDecidedHint),
-        ProposalState.Rejected => Answer.Failed<WriteProposal>(Messages.Refused(proposal.Comment)),
-        ProposalState.Applied => Answer.Failed<WriteProposal>(Messages.AlreadyApplied),
-        ProposalState.Applying => Answer.Failed<WriteProposal>(Messages.BeingApplied, Messages.BeingAppliedHint),
-        _ when clock.GetUtcNow() - proposal.At > TimeSpan.FromDays(options.Value.ProposalDays) => Answer.Failed<WriteProposal>(Messages.Expired(options.Value.ProposalDays)),
+        ProposalState.Pending => Answer.Failed<WriteProposal>(Messages.NotDecided, Messages.NotDecidedHint, FailureTypes.Pending),
+        ProposalState.Rejected => Answer.Failed<WriteProposal>(Messages.Refused(proposal.Comment), type: FailureTypes.Rejected),
+        ProposalState.Applied => Answer.Failed<WriteProposal>(Messages.AlreadyApplied, type: FailureTypes.Applied),
+        ProposalState.Applying => Answer.Failed<WriteProposal>(Messages.BeingApplied, Messages.BeingAppliedHint, FailureTypes.Applying),
+        _ when clock.GetUtcNow() - proposal.At > TimeSpan.FromDays(options.Value.ProposalDays) => Answer.Failed<WriteProposal>(Messages.Expired(options.Value.ProposalDays), type: FailureTypes.Expired),
         _ => null
     };
 
@@ -201,7 +202,7 @@ public sealed class Writes(
 
         long touched = operation is WriteOperation.UpdateOne ? Math.Min(1, preview.Matched) : preview.Matched;
         if (touched > options.Value.MostWritten)
-            return Answer.Failed<WriteProposal>(Messages.TooMany(touched, options.Value.MostWritten), Messages.TooManyHint);
+            return Answer.Failed(Messages.TooMany(touched, options.Value.MostWritten), Messages.TooManyHint, FailureTypes.TooLarge);
 
         return Answer.Ok(Proposal(reached, collection, operation, where.ToJsonString(), set.ToJsonString(), touched, preview.Sample));
     }
@@ -231,10 +232,10 @@ public sealed class Writes(
             return previewed.As<WriteProposal>();
 
         if (operation is WriteOperation.UpdateOne && preview.Matched != 1)
-            return Answer.Failed<WriteProposal>(Messages.NotOne(preview.Matched), Messages.NotOneHint);
+            return Answer.Failed(Messages.NotOne(preview.Matched), Messages.NotOneHint, ToolFailures.Arguments);
 
         if (preview.Matched > options.Value.MostWritten)
-            return Answer.Failed<WriteProposal>(Messages.TooMany(preview.Matched, options.Value.MostWritten), Messages.TooManyHint);
+            return Answer.Failed(Messages.TooMany(preview.Matched, options.Value.MostWritten), Messages.TooManyHint, FailureTypes.TooLarge);
 
         return Answer.Ok(Proposal(reached, table, operation, where.ToJsonString(), set.ToJsonString(), preview.Matched, preview.Sample));
     }
@@ -265,11 +266,11 @@ public sealed class Writes(
             return found.As<WriteContext>();
 
         if (source.Source.Kind is not SourceKind.MongoDb && !SqlWriteRules.IsTable(collection))
-            return Answer.Failed<WriteContext>(Messages.SqlTableBad(collection), Messages.CollectionsHint(source.Source));
+            return Answer.Failed(Messages.SqlTableBad(collection), Messages.CollectionsHint(source.Source), ToolFailures.Arguments);
 
         bool isAllowed = source.Source.Kind is SourceKind.MongoDb ? source.Source.Allows(collection) : SqlRules.IsAllowed(source.Source, collection);
         if (!isAllowed)
-            return Answer.Failed<WriteContext>(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source));
+            return Answer.Failed(Messages.CollectionKept(source.Source.Name, collection), Messages.CollectionsHint(source.Source), FailureTypes.NotAllowed);
 
         return Answer.Ok(new WriteContext(source, current));
     }

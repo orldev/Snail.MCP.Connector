@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -20,7 +21,7 @@ public static class WriteRules
     public static Answer<WriteOperation> Operation(string word) =>
         Enum.TryParse(word.Replace("_", string.Empty, StringComparison.Ordinal), ignoreCase: true, out WriteOperation operation) && Enum.IsDefined(operation)
             ? Answer.Ok(operation)
-            : Answer.Failed<WriteOperation>(Messages.BadOperation);
+            : Answer.Failed(Messages.BadOperation, type: ToolFailures.Arguments);
 
     /// <summary>The operation as a proposal is asked with and every answer and journal line spells it: update, update_one, insert, delete.</summary>
     public static string Word(WriteOperation operation) => operation switch
@@ -36,7 +37,7 @@ public static class WriteRules
         if (parsed.Value is not { } filter)
             return parsed;
 
-        return filter.Count == 0 ? Answer.Failed<JsonObject>(Messages.EmptyFilter, Messages.EmptyFilterHint) : parsed;
+        return filter.Count == 0 ? Answer.Failed(Messages.EmptyFilter, Messages.EmptyFilterHint, ToolFailures.Arguments) : parsed;
     }
 
     /// <summary>The update's operators, or why they are not ones a proposal may use.</summary>
@@ -48,7 +49,7 @@ public static class WriteRules
 
         string? stray = update.Select(pair => pair.Key).FirstOrDefault(key => !Operators.Contains(key, StringComparer.Ordinal));
         if (update.Count == 0 || stray is not null)
-            return Answer.Failed<JsonObject>(Messages.BadUpdate(stray), Messages.UpdateHint);
+            return Answer.Failed(Messages.BadUpdate(stray), Messages.UpdateHint, ToolFailures.Arguments);
 
         return parsed;
     }
@@ -67,10 +68,10 @@ public static class WriteRules
         }
 
         if (parsed is not JsonArray documents || documents.Count == 0 || documents.Any(document => document is not JsonObject))
-            return Answer.Failed<JsonArray>(Messages.NotInsertable, Messages.ExtendedJsonHint);
+            return Answer.Failed(Messages.NotInsertable, Messages.ExtendedJsonHint, ToolFailures.Arguments);
 
         if (documents.Count > most)
-            return Answer.Failed<JsonArray>(Messages.TooMany(documents.Count, most), Messages.TooManyHint);
+            return Answer.Failed(Messages.TooMany(documents.Count, most), Messages.TooManyHint, FailureTypes.TooLarge);
 
         return Answer.Ok(documents);
     }

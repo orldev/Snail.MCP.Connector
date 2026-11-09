@@ -200,6 +200,7 @@ public abstract class SqlTablesTests(SqlFixture database)
         var page = await _tables.QueryAsync(database.Source, Slow, Page with { Seconds = 1 }, CancellationToken.None);
 
         Assert.Equal(Messages.TooSlow(1), page.Error);
+        Assert.Equal("timeout", page.Type);
     }
 
     [Fact]
@@ -208,6 +209,7 @@ public abstract class SqlTablesTests(SqlFixture database)
         var page = await _tables.QueryAsync(database.Source, "SELECT * FROM salaries", Page, CancellationToken.None);
 
         Assert.StartsWith(Messages.DatabaseSaid("ledger", string.Empty), page.Error, StringComparison.Ordinal);
+        Assert.Equal("databaseError", page.Type);
         Assert.DoesNotContain("Password=", page.Error, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -246,6 +248,7 @@ public abstract class SqlTablesTests(SqlFixture database)
         var written = await _tables.WriteAsync(database.Writable, Proposal(WriteOperation.Update, """{"city": "Madrid"}""", """{"$set": {"city": "Zaragoza"}}""", 1), CancellationToken.None);
 
         Assert.Equal(Messages.Changed(15, 1), written.Error);
+        Assert.Equal("changed", written.Type);
         Assert.Equal(0, await CountAsync("SELECT COUNT(*) AS n FROM orders WHERE city = 'Zaragoza'"));
     }
 
@@ -268,6 +271,7 @@ public abstract class SqlTablesTests(SqlFixture database)
         var written = await _tables.WriteAsync(database.Source, Proposal(WriteOperation.Delete, """{"number": 1}""", "{}", 1), CancellationToken.None);
 
         Assert.Equal(Messages.NoWriter, written.Error);
+        Assert.Equal("readOnly", written.Type);
     }
 
     [Fact]

@@ -18,7 +18,9 @@ public static class ServerGuidance
         connector_propose_write and runs only after the stand's owner or an administrator allows it.
 
         Every answer is JSON with an ok flag, and a failed call is also flagged isError. When ok is false, read error and
-        hint and fix the call instead of retrying it verbatim. An export whose job failed after it started answers ok false
-        as well: it was begun in the journal, and no file was left in the working copy.
+        hint and fix the call instead of retrying it verbatim; type names the failure: arguments a call to fix, notAllowed
+        what this server or the source never runs, pending, rejected, applied or expired a proposal's state, journalDown
+        or notConfigured the stand's to fix, databaseError or timeout the database's. An export whose job failed after it
+        started answers ok false as well: it was begun in the journal, and no file was left in the working copy.
         """;
 }

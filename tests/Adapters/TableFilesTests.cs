@@ -4,6 +4,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Snail.MCP.Connector.Adapters;
 using Snail.MCP.Connector.Application.Ports;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Tests.Adapters;
 
@@ -106,7 +107,7 @@ public sealed class TableFilesTests : IDisposable
             var written = await Files().WriteAsync(_copy, "orders.csv", TableFormat.Csv, Stream(["""{"n": 1}"""]), 100, CancellationToken.None);
 
             Assert.False(written.IsSuccess);
-            Assert.Equal("outside", written.Type);
+            Assert.Equal(Reached.Outside, written.Type);
             Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
         }
         finally

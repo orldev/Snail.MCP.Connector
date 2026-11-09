@@ -1,4 +1,5 @@
 using System.Net;
+using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Tests.Tools;
 
@@ -85,7 +86,7 @@ public sealed class ProcessContractTests : IAsyncLifetime
 
         Assert.Equal(["connector_sources"], tools.Select(tool => tool.Name));
         Assert.True(result.IsError);
-        Assert.False(result.IsOk());
+        Assert.Equal(GrantOptions.NotGranted, result.Type());
         Assert.Contains("'connector_count' was not granted", result.Error(), StringComparison.Ordinal);
         Assert.NotNull(result.Hint());
     }

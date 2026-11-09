@@ -1,4 +1,5 @@
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting;
 using Snail.Sdk.Mcp.Hosting.Sessions;
 
 namespace Snail.MCP.Connector.Tests.Application;
@@ -33,6 +34,7 @@ public sealed class QueriesTests
         var found = await _fakes.Queries().FindAsync("sales", "salaries", null, null, null, null, CancellationToken.None);
 
         Assert.Equal(Messages.CollectionKept("sales", "salaries"), found.Error);
+        Assert.Equal("notAllowed", found.Type);
         Assert.Empty(_fakes.Database.Asked);
     }
 
@@ -54,6 +56,7 @@ public sealed class QueriesTests
 
         Assert.Null(found.Value);
         Assert.Equal(Messages.JournalDown, found.Error);
+        Assert.Equal("journalDown", found.Type);
     }
 
     /// <summary>A query nobody can trace to a task is the one the journal exists to rule out.</summary>
@@ -70,10 +73,10 @@ public sealed class QueriesTests
 
     /// <summary>Every reason the SDK gives for a root that names no task's copy, in this server's words.</summary>
     [Theory]
-    [InlineData("", Messages.NoCopy, "noRoot")]
-    [InlineData("   ", Messages.NoCopy, "noRoot")]
-    [InlineData("/elsewhere/task-1/step-0", "is not a task's copy", "outside")]
-    [InlineData("/workspaces", "is not a task's copy", "outside")]
+    [InlineData("", Messages.NoCopy, Reached.NoRoot)]
+    [InlineData("   ", Messages.NoCopy, Reached.NoRoot)]
+    [InlineData("/elsewhere/task-1/step-0", "is not a task's copy", Reached.Outside)]
+    [InlineData("/workspaces", "is not a task's copy", Reached.Outside)]
     [InlineData("/workspaces/task-1/../../etc", "is not a task's copy", "malformed")]
     [InlineData("/workspaces/Not_A_Task/step-0", "is not a task's copy", "notATask")]
     public void Of_RootThatNamesNoCopy_IsRefusedInTheServersWords(string root, string said, string type)
@@ -99,6 +102,7 @@ public sealed class QueriesTests
         var aggregated = await _fakes.Queries().AggregateAsync("sales", "orders", """[{"$out": "copy"}]""", null, CancellationToken.None);
 
         Assert.Equal(Messages.Forbidden("$out"), aggregated.Error);
+        Assert.Equal("notAllowed", aggregated.Type);
         Assert.Empty(_fakes.Database.Asked);
     }
 
@@ -116,6 +120,7 @@ public sealed class QueriesTests
         var counted = await _fakes.Queries().CountAsync("ledger", "accounts", null, CancellationToken.None);
 
         Assert.Equal(Messages.NotDocuments, counted.Error);
+        Assert.Equal(ToolFailures.Arguments, counted.Type);
     }
 
     [Fact]
@@ -136,6 +141,7 @@ public sealed class QueriesTests
         var queried = await _fakes.Queries().QueryAsync("sales", "SELECT 1", null, CancellationToken.None);
 
         Assert.Equal(Messages.NotTables, queried.Error);
+        Assert.Equal(ToolFailures.Arguments, queried.Type);
     }
 
     [Fact]
@@ -144,6 +150,7 @@ public sealed class QueriesTests
         var queried = await _fakes.Queries().QueryAsync("ledger", "UPDATE accounts SET balance = 0", null, CancellationToken.None);
 
         Assert.Equal(Messages.NotASelect, queried.Error);
+        Assert.Equal(ToolFailures.Arguments, queried.Type);
         Assert.Empty(_fakes.Tables.Asked);
     }
 
@@ -162,6 +169,7 @@ public sealed class QueriesTests
         var counted = await _fakes.Queries().CountAsync("ghost", "deals", null, CancellationToken.None);
 
         Assert.Equal(Messages.NoSource("ghost"), counted.Error);
+        Assert.Equal("noSuchSource", counted.Type);
         Assert.Equal(Messages.NoSourceHint, counted.Hint);
     }
 
@@ -173,6 +181,7 @@ public sealed class QueriesTests
         var exported = await _fakes.Queries().ExportAsync("sales", "orders", filter, pipeline, null, "csv", "paid", CancellationToken.None);
 
         Assert.Equal(Messages.OneQuery, exported.Error);
+        Assert.Equal(ToolFailures.Arguments, exported.Type);
     }
 
     [Theory]
@@ -184,6 +193,17 @@ public sealed class QueriesTests
         var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, null, "csv", file, CancellationToken.None);
 
         Assert.Equal(Messages.BadFileName, exported.Error);
+        Assert.Equal(ToolFailures.Arguments, exported.Type);
+    }
+
+    /// <summary>A filter the rules refuse keeps its type on the way out of the export, not only its words.</summary>
+    [Fact]
+    public async Task ExportAsync_FilterThatRunsCode_KeepsTheRefusalsType()
+    {
+        var exported = await _fakes.Queries().ExportAsync("sales", "orders", """{"$where": "1"}""", null, null, "csv", "paid", CancellationToken.None);
+
+        Assert.Equal(Messages.Forbidden("$where"), exported.Error);
+        Assert.Equal("notAllowed", exported.Type);
     }
 
     [Fact]
@@ -201,6 +221,7 @@ public sealed class QueriesTests
         var exported = await _fakes.Queries().ExportAsync("sales", "orders", "{}", null, null, "pdf", "paid", CancellationToken.None);
 
         Assert.Equal(Messages.BadFormat, exported.Error);
+        Assert.Equal(ToolFailures.Arguments, exported.Type);
     }
 
     [Fact]

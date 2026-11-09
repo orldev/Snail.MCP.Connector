@@ -112,7 +112,7 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
     public async Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
     {
         if (source.Access.WriteUri is not { } uri)
-            return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
+            return Answer.Failed(Messages.NoWriter, Messages.NoWriterHint, FailureTypes.ReadOnly);
 
         var writable = await GuardedAsync(source, () => Task.FromResult(Writable(uri, source, proposal.Collection)), Seconds);
         if (!writable.TryGet(out var documents))
@@ -126,7 +126,7 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
             return matching.As<long>();
 
         if (ids.Count > proposal.Matched)
-            return Answer.Failed<long>(Messages.Changed(ids.Count, proposal.Matched));
+            return Answer.Failed(Messages.Changed(ids.Count, proposal.Matched), type: FailureTypes.Changed);
 
         var bounded = Builders<BsonDocument>.Filter.And(BsonDocument.Parse(proposal.Filter), Builders<BsonDocument>.Filter.In("_id", ids));
 
@@ -285,11 +285,11 @@ public sealed partial class MongoDocuments(IOptions<ConnectorOptions> options) :
         }
         catch (MongoExecutionTimeoutException)
         {
-            return Answer.Failed<T>(Messages.TooSlow(seconds), Messages.TooSlowHint);
+            return Answer.Failed(Messages.TooSlow(seconds), Messages.TooSlowHint, FailureTypes.Timeout);
         }
         catch (Exception exception) when (exception is MongoException or TimeoutException or FormatException or BsonException or InvalidOperationException or JsonException)
         {
-            return Answer.Failed<T>(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), Messages.ExtendedJsonHint);
+            return Answer.Failed(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), Messages.ExtendedJsonHint, FailureTypes.DatabaseError);
         }
     }
 

@@ -121,6 +121,24 @@ A source is one KV v2 secret in the stand's Vault, under `secret/connectors/<nam
 | `readUri` | the connection string of the user that may only read: a `mongodb://` URI, or for SQL the driver's own form (`Host=…;Username=…;Password=…` for PostgreSQL, `Server=…;User Id=…;Password=…;TrustServerCertificate=true` for SQL Server); the database is taken from `database` |
 | `writeUri` | the connection string of the user that may write — used only after a person approves a write |
 
+## Failures
+
+A refusal is `{"ok": false, "error": …, "hint": …, "type": …}`, flagged `isError`. `type` is the word a program
+branches on (`FailureTypes`); the error is prose for the model and may be reworded.
+
+| `type` | when |
+|---|---|
+| `arguments` | a filter, pipeline, statement, update, file name, format or `wait` the tool does not take, or a tool asked of the wrong kind of source |
+| `notAllowed` | an operator or statement that writes or runs code, a collection or table the source keeps out |
+| `noRoot`, `outside`, `malformed`, `notATask` | the session names no task's copy (the SDK's reasons); `outside` also for an `exports` folder that leads out of the copy |
+| `notGranted` | a tool the session's address did not name |
+| `noSources`, `noSuchSource`, `sourceIncomplete` | nothing declared on the stand, no source of that name, a source declared without its kind, database or `readUri` |
+| `notConfigured` | no Vault address, or no `APPROVAL_KEY` for writes |
+| `vaultError`, `databaseError`, `timeout`, `unreadable` | Vault or the database refused or failed, the query ran past its time, its answer could not be read |
+| `journalDown` | the journal could not be written, so the answer or the step is withheld |
+| `readOnly`, `tooLarge` | a source with no writing user, a write past the documents or rows one proposal may touch |
+| `noSuchProposal`, `notYours`, `pending`, `rejected`, `applying`, `applied`, `expired`, `changed` | a proposal that does not exist, is another task's, nobody decided yet, a person refused, is running or ran, is past its days, or whose data changed since |
+
 ## Settings
 
 The settings file `connector`, then the `SNAIL_MCP_CONNECTOR_` variables, which win: `VAULT_ADDRESS`, `VAULT_TOKEN` (read

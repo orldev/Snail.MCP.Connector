@@ -139,7 +139,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
     public async Task<Answer<long>> WriteAsync(ReachableSource source, WriteProposal proposal, CancellationToken cancellationToken)
     {
         if (source.Access.WriteUri is not { } uri)
-            return Answer.Failed<long>(Messages.NoWriter, Messages.NoWriterHint);
+            return Answer.Failed(Messages.NoWriter, Messages.NoWriterHint, FailureTypes.ReadOnly);
 
         var kind = source.Source.Kind;
         try
@@ -159,7 +159,7 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
             if (proposal.Operation is not WriteOperation.Insert && written > proposal.Matched)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return Answer.Failed<long>(Messages.Changed(written, proposal.Matched));
+                return Answer.Failed(Messages.Changed(written, proposal.Matched), type: FailureTypes.Changed);
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -168,11 +168,11 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
         }
         catch (Exception exception) when (IsTimeout(exception))
         {
-            return Answer.Failed<long>(Messages.TooSlow(Seconds), Messages.TooSlowHint);
+            return Answer.Failed(Messages.TooSlow(Seconds), Messages.TooSlowHint, FailureTypes.Timeout);
         }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or ArgumentException or TimeoutException)
         {
-            return Answer.Failed<long>(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)));
+            return Answer.Failed(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), type: FailureTypes.DatabaseError);
         }
     }
 
@@ -460,11 +460,11 @@ public sealed partial class SqlTables(IOptions<ConnectorOptions> options) : ITab
         }
         catch (Exception exception) when (IsTimeout(exception))
         {
-            return Answer.Failed<T>(Messages.TooSlow(seconds), Messages.TooSlowHint);
+            return Answer.Failed(Messages.TooSlow(seconds), Messages.TooSlowHint, FailureTypes.Timeout);
         }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or ArgumentException or TimeoutException)
         {
-            return Answer.Failed<T>(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), Messages.SelectHint);
+            return Answer.Failed(Messages.DatabaseSaid(source.Source.Name, Scrubbed(exception.Message)), Messages.SelectHint, FailureTypes.DatabaseError);
         }
     }
 

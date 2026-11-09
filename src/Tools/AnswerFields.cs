@@ -1,67 +1,59 @@
 using System.Text.Json.Nodes;
-using ModelContextProtocol.Protocol;
 using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Application.Ports;
 
 namespace Snail.MCP.Connector.Tools;
 
-/// <summary>What each answer of this server carries as its data, in the envelope of <see cref="ToolAnswer"/>.</summary>
+/// <summary>What each answer of this server carries as its data, in the envelope of <see cref="ToolAnswer"/> — one overload of <c>Of</c> per record.</summary>
 /// <remarks>The envelope — ok first, error and hint on a failure, flagged an error — is the SDK's; the fields inside the data are this server's.</remarks>
-public static class ConnectorAnswers
+public static class AnswerFields
 {
     /// <summary>The sources, without their credentials, and a note naming the ones left out.</summary>
-    public static CallToolResult From(Answer<DeclaredSources> answer) =>
-        ToolAnswer.From(answer, listed => new JsonObject { ["sources"] = new JsonArray([.. listed.Sources.Select(Data)]), ["note"] = Note(listed) });
+    public static JsonObject Of(DeclaredSources listed) => new()
+    {
+        ["sources"] = new JsonArray([.. listed.Sources.Select(Of)]),
+        ["note"] = Note(listed)
+    };
 
     /// <summary>The sources a listing left out, in words; null when it left out none.</summary>
     public static string? Note(DeclaredSources listed) => listed.Unread.Count == 0 ? null : Messages.SourcesUnread(listed.Unread);
 
     /// <summary>The collections of a source an agent may read.</summary>
-    public static CallToolResult From(Answer<SourceCollections> answer) =>
-        ToolAnswer.From(answer, listed => new JsonObject
-        {
-            ["source"] = listed.Source.Name,
-            ["database"] = listed.Source.Database,
-            ["description"] = listed.Source.Description,
-            ["collections"] = new JsonArray([.. listed.Collections.Select(name => JsonValue.Create(name))])
-        });
+    public static JsonObject Of(SourceCollections listed) => new()
+    {
+        ["source"] = listed.Source.Name,
+        ["database"] = listed.Source.Database,
+        ["description"] = listed.Source.Description,
+        ["collections"] = new JsonArray([.. listed.Collections.Select(name => JsonValue.Create(name))])
+    };
 
     /// <summary>A collection's shape.</summary>
-    public static CallToolResult From(Answer<CollectionShape> answer) =>
-        ToolAnswer.From(answer, shape => new JsonObject
-        {
-            ["collection"] = shape.Name,
-            ["documents"] = shape.Documents,
-            ["sampled"] = shape.Sampled,
-            ["indexes"] = new JsonArray([.. shape.Indexes.Select(index => JsonValue.Create(index))]),
-            ["fields"] = new JsonArray([.. shape.Fields.Select(Data)])
-        });
+    public static JsonObject Of(CollectionShape shape) => new()
+    {
+        ["collection"] = shape.Name,
+        ["documents"] = shape.Documents,
+        ["sampled"] = shape.Sampled,
+        ["indexes"] = new JsonArray([.. shape.Indexes.Select(index => JsonValue.Create(index))]),
+        ["fields"] = new JsonArray([.. shape.Fields.Select(Of)])
+    };
 
     /// <summary>A page of rows.</summary>
-    public static CallToolResult From(Answer<RowPage> answer) =>
-        ToolAnswer.From(answer, page => new JsonObject
-        {
-            ["count"] = page.Rows.Count,
-            ["cut"] = page.IsCut,
-            ["rows"] = new JsonArray([.. page.Rows.Select(row => JsonNode.Parse(row))]),
-            ["note"] = page.IsCut ? Messages.Cut : null
-        });
+    public static JsonObject Of(RowPage page) => new()
+    {
+        ["count"] = page.Rows.Count,
+        ["cut"] = page.IsCut,
+        ["rows"] = new JsonArray([.. page.Rows.Select(row => JsonNode.Parse(row))]),
+        ["note"] = page.IsCut ? Messages.Cut : null
+    };
 
     /// <summary>A count.</summary>
-    public static CallToolResult From(Answer<long> answer) => ToolAnswer.From(answer, count => new JsonObject { ["count"] = count });
-
-    /// <summary>A written export.</summary>
-    public static CallToolResult From(Answer<ExportedFile> answer) => ToolAnswer.From(answer, Data);
+    public static JsonObject Of(long count) => new() { ["count"] = count };
 
     /// <summary>The task's queries.</summary>
-    public static CallToolResult From(Answer<IReadOnlyList<QueryRecord>> answer) =>
-        ToolAnswer.From(answer, queries => new JsonObject { ["queries"] = new JsonArray([.. queries.Select(Data)]) });
-
-    /// <summary>A proposal to write, or how one ran.</summary>
-    public static CallToolResult From(Answer<WriteProposal> answer) => ToolAnswer.From(answer, Data);
+    public static JsonObject Of(IReadOnlyList<QueryRecord> queries) => new() { ["queries"] = new JsonArray([.. queries.Select(Of)]) };
 
     /// <summary>A proposal as the agent and the dashboard read it.</summary>
-    public static JsonObject Data(WriteProposal proposal) => new()
+    public static JsonObject Of(WriteProposal proposal) => new()
     {
         ["proposal"] = proposal.Id,
         ["state"] = ToolAnswer.Word(proposal.State),
@@ -85,7 +77,7 @@ public static class ConnectorAnswers
     };
 
     /// <summary>A written export: the file in the working copy, its rows and columns, and whether it stopped at the most rows.</summary>
-    public static JsonObject Data(ExportedFile file) => new()
+    public static JsonObject Of(ExportedFile file) => new()
     {
         ["file"] = file.Path,
         ["rows"] = file.Rows,
@@ -93,7 +85,7 @@ public static class ConnectorAnswers
         ["cut"] = file.IsCut
     };
 
-    private static JsonObject Data(Source source) => new()
+    private static JsonObject Of(Source source) => new()
     {
         ["name"] = source.Name,
         ["kind"] = ToolAnswer.Word(source.Kind),
@@ -102,7 +94,7 @@ public static class ConnectorAnswers
         ["description"] = source.Description
     };
 
-    private static JsonObject Data(FieldShape field) => new()
+    private static JsonObject Of(FieldShape field) => new()
     {
         ["path"] = field.Path,
         ["types"] = new JsonArray([.. field.Types.Select(type => JsonValue.Create(type))]),
@@ -110,7 +102,7 @@ public static class ConnectorAnswers
         ["example"] = field.Example
     };
 
-    private static JsonObject Data(QueryRecord query) => new()
+    private static JsonObject Of(QueryRecord query) => new()
     {
         ["at"] = ToolAnswer.Moment(query.At),
         ["source"] = query.Source,

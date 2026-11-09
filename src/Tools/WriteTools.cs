@@ -20,7 +20,7 @@ public sealed class WriteTools(Writes writes)
         [Description(ToolDescriptions.WriteFilter)] string? filter = null,
         [Description(ToolDescriptions.Change)] string? change = null,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await writes.ProposeAsync(source, collection, operation, filter, change, reason, cancellationToken));
+        ToolAnswer.From(await writes.ProposeAsync(source, collection, operation, filter, change, reason, cancellationToken), AnswerFields.Of);
 
     /// <summary>Runs an allowed proposal.</summary>
     [McpServerTool(Name = "connector_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
@@ -28,5 +28,5 @@ public sealed class WriteTools(Writes writes)
     public async Task<CallToolResult> ApplyAsync(
         [Description(ToolDescriptions.Proposal)] string proposal,
         CancellationToken cancellationToken = default) =>
-        ConnectorAnswers.From(await writes.ApplyAsync(proposal, cancellationToken));
+        ToolAnswer.From(await writes.ApplyAsync(proposal, cancellationToken), AnswerFields.Of);
 }

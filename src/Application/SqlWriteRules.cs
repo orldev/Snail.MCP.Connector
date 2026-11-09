@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Application;
 
@@ -23,18 +24,18 @@ public static partial class SqlWriteRules
     public static Answer<JsonObject> Filter(string? text)
     {
         if (Parsed(text) is not JsonObject filter)
-            return Answer.Failed<JsonObject>(Messages.SqlFilterBad("it is not a JSON object"), Messages.SqlFilterHint);
+            return Answer.Failed(Messages.SqlFilterBad("it is not a JSON object"), Messages.SqlFilterHint, ToolFailures.Arguments);
 
         if (filter.Count == 0)
-            return Answer.Failed<JsonObject>(Messages.EmptyFilter, Messages.SqlFilterHint);
+            return Answer.Failed(Messages.EmptyFilter, Messages.SqlFilterHint, ToolFailures.Arguments);
 
         foreach (var condition in filter)
         {
             if (!IsName(condition.Key))
-                return Answer.Failed<JsonObject>(Messages.SqlFilterBad($"\"{condition.Key}\" is not a column name"), Messages.SqlFilterHint);
+                return Answer.Failed(Messages.SqlFilterBad($"\"{condition.Key}\" is not a column name"), Messages.SqlFilterHint, ToolFailures.Arguments);
 
             if (Wrong(condition.Key, condition.Value) is { } wrong)
-                return Answer.Failed<JsonObject>(Messages.SqlFilterBad(wrong), Messages.SqlFilterHint);
+                return Answer.Failed(Messages.SqlFilterBad(wrong), Messages.SqlFilterHint, ToolFailures.Arguments);
         }
 
         return Answer.Ok(filter);
@@ -44,21 +45,21 @@ public static partial class SqlWriteRules
     public static Answer<JsonObject> Update(string? text)
     {
         if (Parsed(text) is not JsonObject update || update.Count == 0)
-            return Answer.Failed<JsonObject>(Messages.BadUpdate(null), Messages.SqlUpdateHint);
+            return Answer.Failed(Messages.BadUpdate(null), Messages.SqlUpdateHint, ToolFailures.Arguments);
 
         foreach (var operation in update)
         {
             if (!Operators.Contains(operation.Key, StringComparer.Ordinal))
-                return Answer.Failed<JsonObject>(Messages.BadUpdate(operation.Key), Messages.SqlUpdateHint);
+                return Answer.Failed(Messages.BadUpdate(operation.Key), Messages.SqlUpdateHint, ToolFailures.Arguments);
 
             if (operation.Value is not JsonObject { Count: > 0 } named)
-                return Answer.Failed<JsonObject>(Messages.BadUpdate(null), Messages.SqlUpdateHint);
+                return Answer.Failed(Messages.BadUpdate(null), Messages.SqlUpdateHint, ToolFailures.Arguments);
 
             foreach (var column in named)
             {
                 bool isValue = operation.Key == "$inc" ? IsNumber(column.Value) : IsScalar(column.Value);
                 if (!IsName(column.Key) || !isValue)
-                    return Answer.Failed<JsonObject>(Messages.SqlColumnBad(column.Key), Messages.SqlUpdateHint);
+                    return Answer.Failed(Messages.SqlColumnBad(column.Key), Messages.SqlUpdateHint, ToolFailures.Arguments);
             }
         }
 
@@ -75,7 +76,7 @@ public static partial class SqlWriteRules
         var columns = rows.Cast<JsonObject>().SelectMany(row => row);
         var wrong = columns.FirstOrDefault(pair => !IsName(pair.Key) || !IsScalar(pair.Value));
 
-        return wrong.Key is null ? listed : Answer.Failed<JsonArray>(Messages.SqlColumnBad(wrong.Key), Messages.SqlInsertHint);
+        return wrong.Key is null ? listed : Answer.Failed(Messages.SqlColumnBad(wrong.Key), Messages.SqlInsertHint, ToolFailures.Arguments);
     }
 
     /// <summary>Whether a table is named as one name or a schema and a name, each a plain identifier.</summary>

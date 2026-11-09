@@ -1,4 +1,5 @@
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Tests.Application;
 
@@ -22,6 +23,7 @@ public sealed class QueryRulesTests
 
         Assert.Null(parsed.Value);
         Assert.Equal(Messages.NotAnObject("filter"), parsed.Error);
+        Assert.Equal(ToolFailures.Arguments, parsed.Type);
         Assert.Equal(Messages.ExtendedJsonHint, parsed.Hint);
     }
 
@@ -32,6 +34,7 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Document("""{"$or": [{"status": "paid"}, {"$where": "this.total > 1"}]}""", "filter");
 
         Assert.Equal(Messages.Forbidden("$where"), parsed.Error);
+        Assert.Equal("notAllowed", parsed.Type);
     }
 
     [Theory]
@@ -44,6 +47,7 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Pipeline(pipeline, Sales);
 
         Assert.Equal(Messages.Forbidden(operation), parsed.Error);
+        Assert.Equal("notAllowed", parsed.Type);
     }
 
     /// <summary>A collection kept out by name must not come in through a join.</summary>
@@ -60,6 +64,7 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Pipeline(pipeline, Sales);
 
         Assert.Equal(Messages.CollectionKept("sales", "salaries"), parsed.Error);
+        Assert.Equal("notAllowed", parsed.Type);
     }
 
     [Fact]
@@ -90,6 +95,7 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Pipeline(pipeline, Sales);
 
         Assert.Equal(Messages.NotAPipeline, parsed.Error);
+        Assert.Equal(ToolFailures.Arguments, parsed.Type);
     }
 
     /// <summary>A join into another database names it as an object; no source allows that.</summary>
@@ -99,6 +105,7 @@ public sealed class QueryRulesTests
         var parsed = QueryRules.Pipeline("""[{"$lookup": {"from": {"db": "hr", "coll": "salaries"}, "localField": "a", "foreignField": "b", "as": "c"}}]""", Sales);
 
         Assert.StartsWith(Messages.CollectionKept("sales", "{").Split('{')[0], parsed.Error, StringComparison.Ordinal);
+        Assert.Equal("notAllowed", parsed.Type);
         Assert.Contains("hr", parsed.Error, StringComparison.Ordinal);
     }
 }

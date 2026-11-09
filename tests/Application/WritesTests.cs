@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Tests.Application;
 
@@ -36,6 +37,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", operation, filter, change, "clean up", CancellationToken.None);
 
         Assert.Equal(Messages.EmptyFilter, proposed.Error);
+        Assert.Equal(ToolFailures.Arguments, proposed.Type);
         Assert.Empty(_fakes.Database.Asked);
     }
 
@@ -46,6 +48,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "update", """{"_id": 1}""", """{"stage": "won"}""", "fix", CancellationToken.None);
 
         Assert.Equal(Messages.BadUpdate("stage"), proposed.Error);
+        Assert.Equal(ToolFailures.Arguments, proposed.Type);
     }
 
     [Fact]
@@ -56,6 +59,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "delete", """{"stage": "lost"}""", null, "clean up", CancellationToken.None);
 
         Assert.Equal(Messages.TooMany(5000, 1000), proposed.Error);
+        Assert.Equal("tooLarge", proposed.Type);
     }
 
     [Fact]
@@ -64,6 +68,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("sales", "orders", "insert", null, """[{"n": 1}]""", "add", CancellationToken.None);
 
         Assert.Equal(Messages.NoWriter, proposed.Error);
+        Assert.Equal("readOnly", proposed.Type);
     }
 
     [Fact]
@@ -100,6 +105,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("erp", "invoices", "update_one", """{"status": "open"}""", """{"$set": {"status": "paid"}}""", "fix", CancellationToken.None);
 
         Assert.Equal(Messages.NotOne(4), proposed.Error);
+        Assert.Equal(ToolFailures.Arguments, proposed.Type);
         Assert.Equal(Messages.NotOneHint, proposed.Hint);
     }
 
@@ -135,6 +141,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "insert", null, """[{"n": 1}]""", "add", CancellationToken.None);
 
         Assert.Equal(Messages.NoApprovals, proposed.Error);
+        Assert.Equal("notConfigured", proposed.Type);
     }
 
     [Fact]
@@ -145,6 +152,7 @@ public sealed class WritesTests
         var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.NotDecided, applied.Error);
+        Assert.Equal("pending", applied.Type);
         Assert.Empty(_fakes.Database.WrittenProposals);
     }
 
@@ -173,6 +181,7 @@ public sealed class WritesTests
         Assert.Equal(3, applied.Value.Written);
         Assert.Single(_fakes.Database.WrittenProposals);
         Assert.Equal(Messages.AlreadyApplied, again.Error);
+        Assert.Equal("applied", again.Type);
         Assert.Equal(["propose", "approve", "applying", "apply"], _fakes.Written.Records.Select(record => record.Operation));
     }
 
@@ -185,6 +194,7 @@ public sealed class WritesTests
         var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.Refused("not this quarter"), applied.Error);
+        Assert.Equal("rejected", applied.Type);
     }
 
     /// <summary>Only the task that proposed the write may run it: another task holding the id runs nothing.</summary>
@@ -198,6 +208,7 @@ public sealed class WritesTests
         var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.OtherTask, applied.Error);
+        Assert.Equal("notYours", applied.Type);
         Assert.Empty(_fakes.Database.WrittenProposals);
     }
 
@@ -212,6 +223,7 @@ public sealed class WritesTests
         var applied = await _fakes.Writes(clock).ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.Expired(7), applied.Error);
+        Assert.Equal("expired", applied.Type);
     }
 
     /// <summary>No change to a company's data goes unrecorded: with the journal down nothing is proposed, decided or written.</summary>
@@ -223,6 +235,7 @@ public sealed class WritesTests
         var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "update", """{"stage": "lead"}""", """{"$set": {"stage": "won"}}""", "signed", CancellationToken.None);
 
         Assert.Equal(Messages.JournalDown, proposed.Error);
+        Assert.Equal("journalDown", proposed.Type);
         Assert.Empty(_fakes.Kept.All);
     }
 
@@ -235,6 +248,7 @@ public sealed class WritesTests
         var decided = await _fakes.Writes().DecideAsync(proposal.Id, Key, isAllowed: true, "owner", null, CancellationToken.None);
 
         Assert.Equal(Messages.JournalDown, decided!.Error);
+        Assert.Equal("journalDown", decided!.Type);
         Assert.Equal(ProposalState.Pending, _fakes.Kept.All[proposal.Id].State);
     }
 
@@ -248,7 +262,26 @@ public sealed class WritesTests
         var applied = await _fakes.Writes().ApplyAsync(proposal.Id, CancellationToken.None);
 
         Assert.Equal(Messages.JournalDown, applied.Error);
+        Assert.Equal("journalDown", applied.Type);
         Assert.Empty(_fakes.Database.WrittenProposals);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_NoSuchProposal_IsTyped()
+    {
+        var applied = await _fakes.Writes().ApplyAsync("ghost", CancellationToken.None);
+
+        Assert.Equal(Messages.NoProposal("ghost"), applied.Error);
+        Assert.Equal("noSuchProposal", applied.Type);
+    }
+
+    [Fact]
+    public async Task ProposeAsync_OperationItDoesNotKnow_IsTypedArguments()
+    {
+        var proposed = await _fakes.Writes().ProposeAsync("crm", "deals", "replace", """{"_id": 1}""", """{"stage": "won"}""", "fix", CancellationToken.None);
+
+        Assert.Equal(Messages.BadOperation, proposed.Error);
+        Assert.Equal(ToolFailures.Arguments, proposed.Type);
     }
 
     private async Task<WriteProposal> ProposedAsync() =>

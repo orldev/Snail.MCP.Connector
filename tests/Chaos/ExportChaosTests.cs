@@ -70,6 +70,7 @@ public sealed class ExportChaosTests(ITestOutputHelper output) : IDisposable
         var exported = await queries.ExportAsync("sales", "orders", "{}", null, null, "csv", "orders", CancellationToken.None);
 
         Assert.Equal(Messages.JournalDown, exported.Error);
+        Assert.Equal("journalDown", exported.Type);
         Assert.False(File.Exists(Path.Combine(fakes.Root, "exports", "orders.csv")));
     }
 

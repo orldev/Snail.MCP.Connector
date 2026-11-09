@@ -37,7 +37,7 @@ public static class ConnectorServerExtensions
             builder.Services
                 .AddMcpServer(options =>
                 {
-                    options.ServerInfo = Snail.Sdk.Mcp.Hosting.ServerIdentity.Of(typeof(ConnectorServerExtensions).Assembly);
+                    options.ServerInfo = ServerIdentity.Of(typeof(ConnectorServerExtensions).Assembly);
                     options.ServerInstructions = ServerGuidance.Instructions;
                 })
                 .ExplainFailures(options => options.Error = (_, failure) => SqlTables.Scrubbed(failure.Message))
@@ -46,14 +46,11 @@ public static class ConnectorServerExtensions
                 .WithTools<ConnectorTools>()
                 .WithTools<WriteTools>()
                 .WithTools<DiagnosticsTools>()
-                .WithJobs(Short, OwnerOf);
+                .WithJobs(ConnectorSettings.Name, OwnerOf);
 
             return builder;
         }
     }
-
-    /// <summary>The server's short name, the first part of every job's URI.</summary>
-    public const string Short = "connector";
 
     /// <summary>The owner of a request's jobs: the task its address names, so a step reads only its own task's exports, whichever session it opened.</summary>
     /// <remarks>A worker that connects again opens a new session; owned by the session, the export it was writing would be unknown to it.</remarks>

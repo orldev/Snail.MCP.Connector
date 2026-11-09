@@ -85,7 +85,7 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
         string? folder = RealPath.Of(Path.Combine(copy, Folder));
         bool isInside = root is not null && folder is not null && folder.StartsWith($"{root.TrimEnd('/')}/", StringComparison.Ordinal);
 
-        return isInside ? Answer.Ok(folder!) : Answer.Failed(Messages.ExportsOutside(Folder), Messages.ExportsOutsideHint, Messages.Outside);
+        return isInside ? Answer.Ok(folder!) : Answer.Failed(Messages.ExportsOutside(Folder), Messages.ExportsOutsideHint, Reached.Outside);
     }
 
     private static void Remove(string? file)
@@ -118,7 +118,7 @@ public sealed class TableFiles(IOptions<ConnectorOptions> options) : ITableFiles
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is not OperationCanceledException)
         {
-            return Answer.Failed<SpooledTable>(Messages.DatabaseSaid("export", MongoDocuments.Scrubbed(exception.Message)), Messages.ExtendedJsonHint);
+            return Answer.Failed(Messages.DatabaseSaid("export", MongoDocuments.Scrubbed(exception.Message)), Messages.ExtendedJsonHint, FailureTypes.DatabaseError);
         }
 
         return Answer.Ok(new SpooledTable(columns.Names, count, isCut));

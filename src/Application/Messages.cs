@@ -91,9 +91,6 @@ public static class Messages
     /// <summary>What to do about it.</summary>
     public const string ExportsOutsideHint = "Remove the link in place of the folder, or make it lead to a folder inside the copy, and export again.";
 
-    /// <summary>The type of a refusal for a place outside the session's copy.</summary>
-    public const string Outside = "outside";
-
     /// <summary>A format the export does not write.</summary>
     public const string BadFormat = "The export writes csv or xlsx.";
 

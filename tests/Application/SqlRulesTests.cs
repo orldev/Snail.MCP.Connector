@@ -1,4 +1,5 @@
 using Snail.MCP.Connector.Application;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Tests.Application;
 
@@ -39,6 +40,7 @@ public sealed class SqlRulesTests
         var checkedSelect = SqlRules.Select(statement, Ledger);
 
         Assert.Null(checkedSelect.Value);
+        Assert.Equal(word is null ? ToolFailures.Arguments : "notAllowed", checkedSelect.Type);
         if (word is not null)
             Assert.Equal(Messages.SqlForbidden(word), checkedSelect.Error);
     }
@@ -63,6 +65,7 @@ public sealed class SqlRulesTests
         var checkedSelect = SqlRules.Select(statement, Ledger);
 
         Assert.Contains("salaries", checkedSelect.Error, StringComparison.Ordinal);
+        Assert.Equal("notAllowed", checkedSelect.Type);
     }
 
     [Fact]
@@ -89,7 +92,7 @@ public sealed class SqlRulesTests
     [InlineData("""{"id) OR (1=1": 7}""")]
     [InlineData("""{"id": [7]}""")]
     public void WriteFilter_AnythingElse_IsRefused(string filter) =>
-        Assert.Null(SqlWriteRules.Filter(filter).Value);
+        Assert.Equal(ToolFailures.Arguments, SqlWriteRules.Filter(filter).Type);
 
     [Theory]
     [InlineData("""{"$set": {"status": "paid", "note": null}}""", true)]

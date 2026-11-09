@@ -27,15 +27,15 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
     public async Task<Answer<DeclaredSources>> ListAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Value.VaultAddress))
-            return Answer.Failed<DeclaredSources>(Messages.NoVault, Messages.NoVaultHint);
+            return Answer.Failed(Messages.NoVault, Messages.NoVaultHint, FailureTypes.NotConfigured);
 
         var listed = await ReadAsync($"metadata/{options.Value.VaultPath}?list=true", cancellationToken);
-        if (listed.Error is not null)
-            return Answer.Failed<DeclaredSources>(listed.Error, listed.Hint);
+        if (!listed.IsSuccess)
+            return listed.As<DeclaredSources>();
 
         IReadOnlyList<string> names = [.. (listed.Value?["data"]?["keys"] as JsonArray ?? []).Select(key => key?.GetValue<string>() ?? string.Empty).Where(IsName)];
         if (names.Count == 0)
-            return Answer.Failed<DeclaredSources>(Messages.NoSources, Messages.NoSourcesHint);
+            return Answer.Failed(Messages.NoSources, Messages.NoSourcesHint, FailureTypes.NoSources);
 
         IReadOnlyList<string> ordered = [.. names.Order(StringComparer.Ordinal)];
         var found = await Task.WhenAll(ordered.Select(name => FindAsync(name, cancellationToken)));
@@ -50,17 +50,17 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
     public async Task<Answer<ReachableSource>> FindAsync(string name, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Value.VaultAddress))
-            return Answer.Failed<ReachableSource>(Messages.NoVault, Messages.NoVaultHint);
+            return Answer.Failed(Messages.NoVault, Messages.NoVaultHint, FailureTypes.NotConfigured);
 
         if (!IsName(name))
-            return Answer.Failed<ReachableSource>(Messages.NoSource(name), Messages.NoSourceHint);
+            return Answer.Failed(Messages.NoSource(name), Messages.NoSourceHint, FailureTypes.NoSuchSource);
 
         var read = await ReadAsync($"data/{options.Value.VaultPath}/{name}", cancellationToken);
-        if (read.Error is not null)
-            return Answer.Failed<ReachableSource>(read.Error, read.Hint);
+        if (!read.IsSuccess)
+            return read.As<ReachableSource>();
 
         if (read.Value?["data"]?["data"] is not JsonObject secret)
-            return Answer.Failed<ReachableSource>(Messages.NoSource(name), Messages.NoSourceHint);
+            return Answer.Failed(Messages.NoSource(name), Messages.NoSourceHint, FailureTypes.NoSuchSource);
 
         return Of(name, secret);
     }
@@ -71,13 +71,13 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
         string? Text(string key) => secret[key] is JsonValue value && value.TryGetValue(out string? text) && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
 
         if (Kind(Text("kind")) is not { } kind)
-            return Answer.Failed<ReachableSource>(Messages.SourceIncomplete(name, "kind: mongodb, sqlserver or postgresql"));
+            return Answer.Failed(Messages.SourceIncomplete(name, "kind: mongodb, sqlserver or postgresql"), type: FailureTypes.SourceIncomplete);
 
         if (Text("database") is not { } database)
-            return Answer.Failed<ReachableSource>(Messages.SourceIncomplete(name, "database"));
+            return Answer.Failed(Messages.SourceIncomplete(name, "database"), type: FailureTypes.SourceIncomplete);
 
         if (Text("readUri") is not { } read)
-            return Answer.Failed<ReachableSource>(Messages.SourceIncomplete(name, "readUri"));
+            return Answer.Failed(Messages.SourceIncomplete(name, "readUri"), type: FailureTypes.SourceIncomplete);
 
         IReadOnlyList<string> collections = [.. (Text("collections") ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
         string? write = Text("writeUri");
@@ -109,13 +109,13 @@ public sealed class VaultSources(IHttpClientFactory clients, IOptions<ConnectorO
                 return Answer.Ok(new JsonObject());
 
             if (!response.IsSuccessStatusCode)
-                return Answer.Failed<JsonObject>(Messages.VaultSaid($"{(int)response.StatusCode} {response.ReasonPhrase}"), Messages.NoVaultHint);
+                return Answer.Failed(Messages.VaultSaid($"{(int)response.StatusCode} {response.ReasonPhrase}"), Messages.NoVaultHint, FailureTypes.VaultError);
 
             return Answer.Ok(await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? []);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return Answer.Failed<JsonObject>(Messages.VaultSaid(exception.Message), Messages.NoVaultHint);
+            return Answer.Failed(Messages.VaultSaid(exception.Message), Messages.NoVaultHint, FailureTypes.VaultError);
         }
     }
 }

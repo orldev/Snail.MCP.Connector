@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Snail.MCP.Connector.Application.Ports;
 using Snail.MCP.Connector.Configuration;
+using Snail.Sdk.Mcp.Hosting;
 
 namespace Snail.MCP.Connector.Tools;
 
@@ -21,10 +22,10 @@ public sealed class DiagnosticsTools(ISources sources, IOptions<ConnectorOptions
         var settings = options.Value;
         var state = new JsonObject
         {
-            ["server"] = Snail.Sdk.Mcp.Hosting.ServerIdentity.VersionOf(typeof(DiagnosticsTools).Assembly),
+            ["server"] = ServerIdentity.VersionOf(typeof(DiagnosticsTools).Assembly),
             ["vault"] = string.IsNullOrWhiteSpace(settings.VaultAddress) ? null : settings.VaultAddress,
             ["sources"] = listed.Value?.Sources.Count ?? 0,
-            ["note"] = listed.TryGet(out var declared) ? ConnectorAnswers.Note(declared) : listed.Error,
+            ["note"] = listed.TryGet(out var declared) ? AnswerFields.Note(declared) : listed.Error,
             ["mostRows"] = settings.MostRows,
             ["querySeconds"] = settings.QuerySeconds
         };

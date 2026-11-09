@@ -170,6 +170,7 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         var written = await _documents.WriteAsync(writable, proposal, CancellationToken.None);
 
         Assert.Equal(Messages.Changed(3, 2), written.Error);
+        Assert.Equal("changed", written.Type);
         Assert.Equal(3, await leads.CountDocumentsAsync(new BsonDocument("stage", "cold")));
     }
 
@@ -195,6 +196,7 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         var written = await _documents.WriteAsync(mongo.Source, proposal, CancellationToken.None);
 
         Assert.Equal(Messages.NoWriter, written.Error);
+        Assert.Equal("readOnly", written.Type);
     }
 
     /// <summary>A refused login says so in words, and the password in the connection string stays out of them.</summary>
@@ -207,6 +209,7 @@ public sealed class MongoDocumentsTests(MongoFixture mongo) : IClassFixture<Mong
         var counted = await _documents.CountAsync(wrong, "orders", "{}", CancellationToken.None);
 
         Assert.StartsWith(Messages.DatabaseSaid("sales", string.Empty), counted.Error, StringComparison.Ordinal);
+        Assert.Equal("databaseError", counted.Type);
         Assert.DoesNotContain("not-the-password", counted.Error, StringComparison.Ordinal);
     }
 
