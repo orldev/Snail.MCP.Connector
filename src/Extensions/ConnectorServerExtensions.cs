@@ -4,9 +4,11 @@ using Snail.MCP.Connector.Application;
 using Snail.MCP.Connector.Configuration;
 using Snail.MCP.Connector.Tools;
 using Snail.Sdk.Mcp.Hosting;
+using Snail.Sdk.Mcp.Hosting.Discovery;
 using Snail.Sdk.Mcp.Hosting.Jobs;
 using Snail.Sdk.Mcp.Hosting.Sessions;
 using Snail.Sdk.Mcp.Http;
+using Snail.Sdk.Mcp.Programs;
 
 namespace Snail.MCP.Connector.Extensions;
 
@@ -17,6 +19,8 @@ namespace Snail.MCP.Connector.Extensions;
 /// the refusal of every request a browser makes. A web host of the server's own answered a request with
 /// <c>Origin: http://evil.example</c> 200 (audit of 30.10.2026). The grant of a session (<c>?tool=</c>) is the SDK's: a
 /// tool it does not name is left out of the list, and a call to it is refused in the envelope, type <c>notGranted</c>.
+/// <c>find_tool</c>, <c>run_tools</c> and <c>run_program</c> reach the same tools (<see cref="ConnectorDiscovery"/>): every
+/// command is the tool itself, under the session's grant and in the journal.
 /// A failure nobody foresaw is answered with its message scrubbed of the credentials a connection string carries: a
 /// driver that throws past an adapter quotes the string it was given, and a job's failure is worded the same way.
 /// </remarks>
@@ -46,6 +50,9 @@ public static class ConnectorServerExtensions
                 .WithTools<ConnectorTools>()
                 .WithTools<WriteTools>()
                 .WithTools<DiagnosticsTools>()
+                .WithToolDiscovery(ConnectorDiscovery.Configure)
+                .WithToolSequences()
+                .WithPrograms<ToolCommands>(programs => programs.Global = ConnectorSettings.Name)
                 .WithJobs(ConnectorSettings.Name, OwnerOf);
 
             return builder;

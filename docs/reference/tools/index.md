@@ -1,6 +1,6 @@
 # Tools
 
-11 tools in 3 families.
+14 tools in 4 families.
 The names, descriptions and schemas are generated from the server itself, so they are exactly what the model receives in `tools/list`.
 
 | Tool | Family | What it does |
@@ -16,3 +16,6 @@ The names, descriptions and schemas are generated from the server itself, so the
 | [`connector_propose_write`](writes.md#connector_propose_write) | Writes | Propose a change to a company database — update, update_one, insert or delete — when the task needs one. |
 | [`connector_apply`](writes.md#connector_apply) | Writes | Run a proposal the stand's owner or an administrator allowed, once, as the source's writing user, and get back how many documents or rows it changed. |
 | [`connector_diagnose`](diagnostics.md#connector_diagnose) | Diagnostics | Say whether the server can reach the stand's sources: its version, Vault, and how many sources are declared. |
+| [`find_tool`](discovery.md#find_tool) | Finding and running tools | Finds tools of this server for a task in words, best first, with the parameters of each. |
+| [`run_tools`](discovery.md#run_tools) | Finding and running tools | Runs tools of this server in order in one call, stopping at the first failure; no step sees an earlier answer. |
+| [`run_program`](discovery.md#run_program) | Finding and running tools | Run a JavaScript program whose functions are this server's commands, connector.&lt;command&gt;({ … }), with loops, conditions and the results in hand. |

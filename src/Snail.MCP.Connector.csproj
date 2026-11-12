@@ -25,6 +25,7 @@
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
+    <PackageReference Include="Snail.Sdk.Mcp.Programs" />
   </ItemGroup>
 
   <ItemGroup>

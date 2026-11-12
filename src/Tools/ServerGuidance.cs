@@ -15,7 +15,9 @@ public static class ServerGuidance
         connector_aggregate; a SQL source with connector_query and one SELECT. Analyse by grouping and summing in the
         database rather than reading every row and adding them up yourself. When a person needs the data as a table, write
         it with connector_export and name the file in your answer. A change to the data is proposed with
-        connector_propose_write and runs only after the stand's owner or an administrator allows it.
+        connector_propose_write and runs only after the stand's owner or an administrator allows it. find_tool names the tool
+        for a task in your words; several queries known in advance go in one call of run_tools, and queries that depend on
+        each other's answers in one run_program (connector.find({...}) calls connector_find): each is journaled all the same.
 
         Every answer is JSON with an ok flag, and a failed call is also flagged isError. When ok is false, read error and
         hint and fix the call instead of retrying it verbatim; type names the failure: arguments a call to fix, notAllowed

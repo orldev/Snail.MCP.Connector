@@ -26,7 +26,7 @@ public sealed class ProcessContractTests : IAsyncLifetime
 
         var tools = await session.ListToolsAsync();
 
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(14, tools.Count);
     }
 
     /// <summary>An export outlasting its wait is a job: its resource is offered, and a client is told of its end rather than made to ask.</summary>

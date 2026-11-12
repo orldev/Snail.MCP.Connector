@@ -108,6 +108,17 @@ reads; both go after `JOURNAL_DAYS`. A query whose answer the server could not r
 document too deep — is answered as such and journaled like any other; a value a SQL driver cannot carry into .NET (an
 interval of months, `NaN`) is written as the database spells it.
 
+## Finding and running tools
+
+Three tools of Snail.Sdk reach the eleven above without a call per query. `find_tool` names the tool for a task in
+the model's words — "how many orders were paid" finds `connector_count` — with its parameters and the command a program
+calls it by. `run_tools` runs several calls known in advance in one, stopping at the first that fails. `run_program`
+runs a short JavaScript program whose calls depend on each other's answers: `connector.count({ … })` calls
+`connector_count`. Every command is the tool itself: held to the session's grant (`?tool=`), checked by the same rules
+and written into the same journal; a program is bounded in time, memory and calls, and reaches nothing of the host.
+The three add about 760 tokens to the list of tools a client reads; a platform with a finder and programs of its own
+can leave them out of a session's grant.
+
 ## Sources
 
 A source is one KV v2 secret in the stand's Vault, under `secret/connectors/<name>`:

@@ -400,5 +400,126 @@
       "readOnlyHint": true
     },
     "skill": null
+  },
+  {
+    "name": "find_tool",
+    "description": "Finds tools of this server for a task in words, best first, with the parameters of each. Ask it before deciding that no tool exists.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "description": "What you are trying to do, in words.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "How many tools to name, 1 to 20.",
+          "type": "integer",
+          "default": 5
+        },
+        "intent": {
+          "description": "Same as task.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "skill": null
+  },
+  {
+    "name": "run_tools",
+    "description": "Runs tools of this server in order in one call, stopping at the first failure; no step sees an earlier answer. An answer past the budget is flagged isOmitted: call that tool alone.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "description": "The steps, in order.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "description": "The tool to call.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "description": "The arguments of a direct call.",
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          }
+        }
+      },
+      "required": [
+        "steps"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "skill": null
+  },
+  {
+    "name": "run_program",
+    "description": "Run a JavaScript program whose functions are this server\u0027s commands, connector.\u003Ccommand\u003E({ \u2026 }), with loops,\nconditions and the results in hand. Use it when the work decides as it goes or takes many steps: the steps run\nhere, and only what the program returns comes back, instead of a call and a reply per step.\nWhat the program returns comes back as result, log(\u2026) writes lines that come back with it, and input is the object\npassed alongside. A failed or refused command throws { error, message, hint, type, details }, which the program may\ncatch and act on; a command the server does not have stops the program with the names nearest to it. The program\nreaches nothing but the commands: no files, no network, no clock but its own. The reply lists every command it sent.\nLimits: 200 commands, 1000000 statements, calls nested 256 deep, 32 MB of memory, and 120 seconds unless timeoutSeconds gives up to 600.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "description": "The body of the program: JavaScript in strict mode, with return for whatever should come back as result.",
+          "type": "string"
+        },
+        "input": {
+          "description": "Values the program reads as input, so that the code itself can stay the same between calls.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "default": null
+        },
+        "timeoutSeconds": {
+          "description": "Seconds the program may run; the description of run_program states the default and the most it may be given.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "code"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "skill": null
   }
 ]
