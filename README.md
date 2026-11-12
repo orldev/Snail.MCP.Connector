@@ -159,7 +159,3 @@ else checks who calls, so the server belongs on the stand's own network, reached
 ```bash
 docker build -t s3l-connector-mcp:local .
 ```
-
-Until the Snail.Sdk version `global.json` asks for is on nuget.org, `nuget.config` takes Snail.Sdk from the author's
-local feed, which a container build does not see: the image builds once the release moves `global.json` to it and
-drops that mapping.
